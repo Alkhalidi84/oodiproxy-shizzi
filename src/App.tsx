@@ -22,6 +22,7 @@ import { measureRealPing } from './utils/realSpeed';
 import { fetchRealExternalIpAndCountry } from './utils/geoIp';
 import VpnBridge, { InstalledApp } from './utils/vpnBridge';
 import ShizziBridge from './utils/shizziBridge';
+import { decryptBackup, encryptBackup } from './utils/backup';
 import { CellularInfo, EMPTY_CELLULAR_INFO, readCellularInfo } from './utils/cellularInfo';
 
 const STORAGE_SERVERS_KEY = 'seloomwarp_servers_v1';
@@ -496,6 +497,71 @@ export default function App() {
     setActiveServerId(defaults[0].id);
   };
 
+  const handleExportBackup = async (password: string) => {
+    const payload = {
+      formatVersion: 1,
+      createdAt: new Date().toISOString(),
+      servers,
+      settings,
+      activeServerId,
+    };
+    const blob = await encryptBackup(payload, password);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'nexalink-backup.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = async (file: File, password: string) => {
+    if (connectionState !== 'disconnected') {
+      throw new Error('Disconnect the VPN before restoring a backup.');
+    }
+    const payload = await decryptBackup(file, password) as {
+      formatVersion?: number;
+      servers?: unknown;
+      settings?: unknown;
+      activeServerId?: unknown;
+    };
+    if (payload.formatVersion !== 1 || !Array.isArray(payload.servers)) {
+      throw new Error('The backup payload is incomplete or unsupported.');
+    }
+    const importedServers = payload.servers.filter((item): item is WireguardServer => {
+      if (!item || typeof item !== 'object') return false;
+      const server = item as Partial<WireguardServer>;
+      return server.protocol === 'WireGuard'
+        && typeof server.name === 'string'
+        && typeof server.endpoint === 'string'
+        && typeof server.privateKey === 'string'
+        && typeof server.publicKey === 'string'
+        && Array.isArray(server.addresses)
+        && Array.isArray(server.dns)
+        && Array.isArray(server.allowedIPs);
+    });
+    if (importedServers.length === 0) {
+      throw new Error('The backup does not contain a valid WireGuard server.');
+    }
+    const importedSettings = payload.settings && typeof payload.settings === 'object'
+      ? payload.settings as Partial<AppSettings>
+      : {};
+    const nextActiveId = typeof payload.activeServerId === 'string'
+      && importedServers.some((server) => server.id === payload.activeServerId)
+      ? payload.activeServerId
+      : importedServers[0].id;
+    setServers(importedServers);
+    setSettings((current) => ({ ...current, ...importedSettings }));
+    setActiveServerId(nextActiveId);
+    setTelemetry({
+      durationSeconds: 0,
+      uploadBytes: 0,
+      downloadBytes: 0,
+      uploadSpeedKBs: 0,
+      downloadSpeedKBs: 0,
+      pingMs: 0,
+    });
+  };
+
   // Open config export for a specific server
   const handleOpenExport = (server?: WireguardServer) => {
     setServerForExport(server || activeServer);
@@ -617,6 +683,8 @@ export default function App() {
         settings={settings}
         onSaveSettings={(newSettings) => setSettings(newSettings)}
         onResetServers={handleResetServers}
+        onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
       />
 
       <ConnectionHistoryModal
