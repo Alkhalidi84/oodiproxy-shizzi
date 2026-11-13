@@ -38,6 +38,7 @@ import dev.shizzi.HotspotClient
 import dev.shizzi.HotspotClientsState
 import dev.shizzi.SessionUiState
 import dev.shizzi.UiStatus
+import dev.shizzi.Traffic
 import dev.shizzi.ui.theme.HeaderHeight
 import dev.shizzi.ui.theme.ScreenPadding
 import dev.shizzi.ui.theme.ShizziTheme
@@ -178,8 +179,8 @@ private fun HotspotClientsDialog(
                     }
                 }
                 Text(
-                    if (state.usageAvailable) "Per-device traffic usage is available."
-                    else "Per-device data usage is not exposed by this Android build. The dashboard total remains aggregate traffic for all hotspot clients.",
+                    if (state.usageAvailable) "Per-device payload usage is measured by Shizzi. Counters reset when this tethering session ends."
+                    else state.message,
                     style = ShizziTheme.typography.caption,
                     color = ShizziTheme.colors.onSurfaceMuted,
                 )
@@ -228,7 +229,8 @@ private fun HotspotClientCard(
                 style = ShizziTheme.typography.caption,
             )
             Text(
-                "Data usage · not available on this Android build",
+                if (client.usageAvailable) "Download · " + Traffic.format(client.rxBytes) + "   Upload · " + Traffic.format(client.txBytes)
+                else "Data usage · unavailable for this device",
                 color = ShizziTheme.colors.onSurfaceMuted,
                 style = ShizziTheme.typography.caption,
             )
