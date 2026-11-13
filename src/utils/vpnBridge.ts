@@ -16,6 +16,8 @@ export interface VpnConnectOptions {
   allowedIPs?: string;
   bypassLanRoute?: boolean;
   excludedApplications?: string[];
+  mtu?: number;
+  keepalive?: number;
 }
 
 export interface VpnTrafficStats {
