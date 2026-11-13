@@ -33,13 +33,16 @@ func (c *clientCounters) add(ip string, upload bool, count int64) {
 	if upload { row.UploadBytes += count } else { row.DownloadBytes += count }
 }
 
-func (c *clientCounters) statsJSON() string {
+func (c *clientCounters) statsJSON(sessionID int64) string {
 	c.mu.RLock()
 	rows := make([]clientTraffic, 0, len(c.clients))
 	for _, row := range c.clients { rows = append(rows, *row) }
 	c.mu.RUnlock()
 	sort.Slice(rows, func(i, j int) bool { return rows[i].IPAddress < rows[j].IPAddress })
-	payload, err := json.Marshal(struct { Clients []clientTraffic `json:"clients"` }{Clients: rows})
+	payload, err := json.Marshal(struct {
+		SessionID int64 `json:"sessionId"`
+		Clients []clientTraffic `json:"clients"`
+	}{SessionID: sessionID, Clients: rows})
 	if err != nil { return `{"clients":[]}` }
 	return string(payload)
 }

@@ -9,6 +9,7 @@ package datapath
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -28,9 +29,10 @@ const nicID tcpip.NICID = 1
 // gVisor types: gomobile carries only a narrow set across JNI, so the Kotlin
 // side sees a handle it can start and stop.
 type Session struct {
-	stack    *stack.Stack
-	binding  *networkBinding
-	counters *clientCounters
+	stack     *stack.Stack
+	binding   *networkBinding
+	counters  *clientCounters
+	sessionID int64
 }
 
 // Start builds a netstack over tunFD, already open, and attaches it to the TUN.
@@ -84,7 +86,7 @@ func Start(tunFD int, mtu int) (*Session, error) {
 		Control: binding.control,
 	}, counters)
 
-	return &Session{stack: netStack, binding: binding, counters: counters}, nil
+	return &Session{stack: netStack, binding: binding, counters: counters, sessionID: time.Now().UnixNano()}, nil
 }
 
 // SetNetwork pins every subsequent dial to a handle from
@@ -109,7 +111,7 @@ func (s *Session) SetNetwork(handle int64) {
 // is internet-to-client. These are relay payload bytes, not Ethernet/IP overhead.
 func (s *Session) StatsJSON() string {
 	if s == nil || s.counters == nil { return `{"clients":[]}` }
-	return s.counters.statsJSON()
+	return s.counters.statsJSON(s.sessionID)
 }
 
 // Stop tears the netstack down. It does not close the TUN fd.
