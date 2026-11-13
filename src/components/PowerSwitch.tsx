@@ -75,7 +75,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         </div>
       </button>
 
-      {/* Status Pill Badge ("Connected" / "غير Connected") */}
+      {/* Status Pill Badge ("Connected" / "Disconnected") */}
       <div className="mt-1.5 flex flex-col items-center gap-0.5">
         <div 
           className={`px-6 py-1 rounded-full flex items-center gap-2 transition-all duration-500 shadow-md border ${
@@ -96,7 +96,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
             }`} 
           />
           <span className="text-sm font-bold tracking-wide text-white">
-            {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'غير Connected'}
+            {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
           </span>
         </div>
 
