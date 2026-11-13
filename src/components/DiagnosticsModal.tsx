@@ -21,7 +21,7 @@ interface DiagnosticsModalProps {
 
 export const DiagnosticsModal: React.FC<DiagnosticsModalProps> = (props) => {
   const [vpn, setVpn] = React.useState<VpnTrafficStats | null>(null);
-  const [shizuku, setShizuku] = React.useState<ShizukuStatus | null>(null);
+  const [shizuku, setShizuku] = React.useState<ShizziStatus | null>(null);
   const [checkedAt, setCheckedAt] = React.useState<number | null>(null);
   const [error, setError] = React.useState('');
 
