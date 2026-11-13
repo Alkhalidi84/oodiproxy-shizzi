@@ -43,7 +43,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
       }
     } catch (e: any) {
       setParsedPreview(null);
-      setError(e.message || 'صيغة الرابط غير صحيحة');
+      setError(e.message || 'The link format is invalid');
     }
   };
 
@@ -59,7 +59,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
       setParsedPreview(parsed);
     } catch (e: any) {
       setParsedPreview(null);
-      setError('تعذر قراءة ملف الإعدادات');
+      setError('Unable to read the configuration file');
     }
   };
 
@@ -86,7 +86,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
         }
       }
     } catch {
-      setError('يرجى لصق الرابط يدويًا في المربع أدناه');
+      setError('Please paste the link into the field below');
     }
   };
 
@@ -105,7 +105,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
           setConfInput(content);
           setParsedPreview(parsed);
         } catch {
-          setError('تعذر قراءة ملف .conf');
+          setError('Unable to read the .conf file');
         }
       }
     };
@@ -114,14 +114,14 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
 
   const handleSubmit = (activateImmediately: boolean) => {
     if (!parsedPreview) {
-      setError('يرجى إدخال رابط WireGuard صالح أولاً');
+      setError('Please enter a valid WireGuard link first');
       return;
     }
 
     const finalServer: WireguardServer = {
       ...parsedPreview,
       id: 'wg-custom-' + Date.now().toString(36),
-      name: serverName.trim() || parsedPreview.name || 'سيرفر مخصص',
+      name: serverName.trim() || parsedPreview.name || 'Custom Server',
       isCustom: true,
       createdAt: Date.now(),
     };
@@ -136,7 +136,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-server-title"
-        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-right overflow-hidden"
+        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-left overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -149,7 +149,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
           
           <div className="flex items-center gap-2">
             <h2 id="add-server-title" className="text-lg font-bold text-white tracking-wide">
-              إضافة خادم WireGuard
+              Add WireGuard Server
             </h2>
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <Plus className="w-5 h-5" />
@@ -168,7 +168,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             }`}
           >
             <Link className="w-3.5 h-3.5" />
-            <span>رابط URI (wireguard://)</span>
+            <span>URI Link (wireguard://)</span>
           </button>
 
           <button
@@ -180,7 +180,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>ملف أو نص .conf</span>
+            <span>Configuration File or Text (.conf)</span>
           </button>
         </div>
 
@@ -194,7 +194,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-colors"
             >
               <Clipboard className="w-3.5 h-3.5 text-cyan-400" />
-              <span>لصق من الحافظة</span>
+              <span>Paste from Clipboard</span>
             </button>
 
             <button
@@ -205,12 +205,12 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
               {copiedSample ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">تم إدراج رابط بلي بنجاح</span>
+                  <span className="text-emerald-300">Baly link inserted successfully</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                  <span>إدراج رابط بلي (SELOOM1-WARP BALLY)</span>
+                  <span>Insert Baly Link (WARP)</span>
                 </>
               )}
             </button>
@@ -220,9 +220,9 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
           {tab === 'uri' ? (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-blue-400/90 font-mono">يدعم بروتوكول wireguard:// المباشر</span>
+                <span className="text-[10px] text-blue-400/90 font-mono">Supports the standard wireguard:// URI</span>
                 <label htmlFor={uriInputId} className="block text-xs font-bold text-slate-300">
-                  الصق رابط الخادم (wireguard://...) :
+                  Paste the server link (wireguard://...):
                 </label>
               </div>
               <textarea
@@ -240,7 +240,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="cursor-pointer text-xs font-bold text-cyan-400 hover:underline flex items-center gap-1">
-                  <span>رفع ملف .conf</span>
+                  <span>Upload .conf File</span>
                   <input
                     type="file"
                     accept=".conf,.txt"
@@ -249,7 +249,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
                   />
                 </label>
                 <label htmlFor={confInputId} className="block text-xs font-bold text-slate-300">
-                  أو الصق محتوى ملف WireGuard (.conf) :
+                  Or paste WireGuard configuration (.conf):
                 </label>
               </div>
               <textarea
@@ -267,14 +267,14 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
           {/* Server Name input */}
           <div className="space-y-1">
             <label htmlFor={serverNameId} className="block text-xs font-bold text-slate-300">
-              اسم الخادم (اختياري) :
+              Server Name (optional):
             </label>
             <input
               id={serverNameId}
               type="text"
               value={serverName}
               onChange={(e) => setServerName(e.target.value)}
-              placeholder="مثال: WARP BALLY / Cloudflare Fast"
+              placeholder="Example: Cloudflare WARP / Fast Server"
               className="w-full bg-[#050816] border border-slate-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 rounded-xl px-3 py-2 text-xs text-white placeholder:text-slate-600 outline-none"
             />
           </div>
@@ -293,7 +293,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1 font-bold text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>تم التعرف على الإعدادات بنجاح</span>
+                  <span>Configuration parsed successfully</span>
                 </span>
                 <span className="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-mono">
                   {parsedPreview.protocol}
@@ -328,7 +328,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-colors"
           >
-            إلغاء
+            Cancel
           </button>
 
           <button
@@ -336,7 +336,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             disabled={!parsedPreview}
             className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-white transition-colors"
           >
-            حفظ في القائمة
+            Save to List
           </button>
 
           <button
@@ -344,7 +344,7 @@ export const AddServerModal: React.FC<AddServerModalProps> = ({
             disabled={!parsedPreview}
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-bold text-white shadow-[0_0_15px_rgba(6,182,212,0.4)] transition-all"
           >
-            إضافة وتنشيط الآن
+            Add and Connect Now
           </button>
         </div>
       </div>
