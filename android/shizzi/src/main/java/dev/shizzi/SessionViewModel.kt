@@ -188,6 +188,40 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         SessionService.stop(getApplication())
     }
 
+    fun refreshHotspotClients() {
+        if (localState.value.status != UiStatus.CONNECTED) return
+        viewModelScope.launch {
+            runCatching { diagnostics.status() }
+                .onSuccess { status ->
+                    localState.update { current -> current.applyOutcome(Result.success(status)) }
+                }
+                .onFailure { failure ->
+                    SessionLog.warn("could not refresh hotspot clients: ${failure.message}")
+                }
+        }
+    }
+
+    fun setHotspotClientBlocked(macAddress: String, blocked: Boolean) {
+        viewModelScope.launch {
+            runCatching { diagnostics.setClientBlocked(macAddress, blocked) }
+                .onSuccess { raw ->
+                    val result = runCatching { org.json.JSONObject(raw) }.getOrNull()
+                    if (result?.optBoolean("success") != true) {
+                        SessionLog.warn(result?.optString("message") ?: "Hotspot block-list update failed")
+                    } else {
+                        SessionLog.info(result.optString("message"))
+                    }
+                    runCatching { diagnostics.status() }
+                        .onSuccess { status ->
+                            localState.update { current -> current.applyOutcome(Result.success(status)) }
+                        }
+                }
+                .onFailure { failure ->
+                    SessionLog.error("hotspot client action failed: ${failure.message}")
+                }
+        }
+    }
+
     fun runProbes() {
         if (localDiagnostics.value is DiagnosticsState.Running) return
         localDiagnostics.value = DiagnosticsState.Running
