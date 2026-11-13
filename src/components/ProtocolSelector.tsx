@@ -37,8 +37,8 @@ export const ProtocolSelector: React.FC<ProtocolSelectorProps> = ({
   return (
     <div className="w-full rounded-2xl p-3 bg-[#090d24]/80 backdrop-blur-md border border-slate-800/80 select-none">
       {/* Label */}
-      <div className="text-right text-xs font-bold text-slate-300 mb-2.5 px-1">
-        اختر البروتوكول
+      <div className="text-left text-xs font-bold text-slate-300 mb-2.5 px-1">
+        Select Protocol
       </div>
 
       {/* Protocol pills row */}
