@@ -65,7 +65,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
           </div>
         </div>
 
-        {/* Action bar: active tunnel latency check and Add new */}
+        {/* Action bar: active-route internet RTT check and Add new */}
         <div className="flex items-center justify-between gap-2 my-3">
           <button
             onClick={onPingAll}
@@ -73,7 +73,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
             className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-cyan-300 flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-            <span>{isPinging ? 'Checking...' : 'Test Active Tunnel Latency'}</span>
+            <span>{isPinging ? 'Checking...' : 'Test Internet RTT'}</span>
           </button>
 
           <button
