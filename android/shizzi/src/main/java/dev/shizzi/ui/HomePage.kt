@@ -13,13 +13,29 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import dev.shizzi.HotspotClient
+import dev.shizzi.HotspotClientsState
 import dev.shizzi.SessionUiState
 import dev.shizzi.UiStatus
 import dev.shizzi.ui.theme.HeaderHeight
@@ -39,18 +55,18 @@ private fun buttonState(state: SessionUiState): ConnectButtonState = when {
 }
 
 @Composable
-fun HomePage(
-    state: SessionUiState,
-    actions: HomeActions,
-) {
+fun HomePage(state: SessionUiState, actions: HomeActions) {
+    var showClients by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding(),
+        modifier = Modifier.fillMaxSize().systemBarsPadding(),
     ) {
         HomeHeader(
             state = state,
             onOpenSettings = actions.onOpenSettings,
+            onOpenDevices = {
+                showClients = true
+                actions.onRefreshClients()
+            },
         )
 
         HomeBody(state = state, actions = actions)
@@ -59,7 +75,6 @@ fun HomePage(
             modifier = Modifier.align(Alignment.BottomCenter),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-
             Box(
                 modifier = Modifier.height(ShizziTheme.spacing.xxxl),
                 contentAlignment = Alignment.BottomCenter,
@@ -68,9 +83,18 @@ fun HomePage(
                     VpnChip(isBypassed = state.isVpnBypassed)
                 }
             }
-
             StatusRow(state = state, onVersionClick = actions.onOpenEasterEgg)
         }
+    }
+
+    if (showClients) {
+        HotspotClientsDialog(
+            state = state.hotspotClients,
+            isSessionActive = state.status == UiStatus.CONNECTED,
+            onDismiss = { showClients = false },
+            onRefresh = actions.onRefreshClients,
+            onSetBlocked = actions.onSetClientBlocked,
+        )
     }
 }
 
@@ -79,26 +103,30 @@ data class HomeActions(
     val onCancel: () -> Unit,
     val onOpenSettings: () -> Unit,
     val onOpenEasterEgg: () -> Unit,
+    val onRefreshClients: () -> Unit,
+    val onSetClientBlocked: (String, Boolean) -> Unit,
 )
 
 @Composable
 private fun HomeHeader(
     state: SessionUiState,
     onOpenSettings: () -> Unit,
+    onOpenDevices: () -> Unit,
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(HeaderHeight)
-            .padding(horizontal = ShizziTheme.spacing.sm),
+        modifier = Modifier.fillMaxWidth().height(HeaderHeight).padding(horizontal = ShizziTheme.spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(modifier = Modifier.padding(start = ShizziTheme.spacing.sm)) {
             ShizukuBadge(state.shizukuState)
         }
-
         Spacer(Modifier.weight(1f))
-
+        ShizziIconButton(
+            icon = Icons.Filled.Devices,
+            contentDescription = "Connected hotspot devices",
+            onClick = onOpenDevices,
+            tint = ShizziTheme.colors.onSurfaceMuted,
+        )
         ShizziIconButton(
             icon = Icons.Filled.Settings,
             contentDescription = "Settings",
@@ -108,13 +136,108 @@ private fun HomeHeader(
     }
 }
 
+@Composable
+private fun HotspotClientsDialog(
+    state: HotspotClientsState,
+    isSessionActive: Boolean,
+    onDismiss: () -> Unit,
+    onRefresh: () -> Unit,
+    onSetBlocked: (String, Boolean) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Connected devices", modifier = Modifier.weight(1f))
+                TextButton(onClick = onRefresh, enabled = isSessionActive) { Text("Refresh") }
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    if (isSessionActive) "${state.clients.count { it.connected }} connected · ${state.clients.count { it.blocked }} blocked"
+                    else "Start the hotspot to inspect connected devices",
+                    style = ShizziTheme.typography.caption,
+                    color = ShizziTheme.colors.onSurfaceMuted,
+                )
+                if (state.clients.isEmpty()) {
+                    Text(
+                        if (isSessionActive) state.message else "No live device inventory while the hotspot is stopped.",
+                        color = ShizziTheme.colors.onSurfaceMuted,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(state.clients, key = { it.macAddress }) { client ->
+                            HotspotClientCard(client, state.blockSupported, onSetBlocked)
+                        }
+                    }
+                }
+                Text(
+                    if (state.usageAvailable) "Per-device traffic usage is available."
+                    else "Per-device data usage is not exposed by this Android build. The dashboard total remains aggregate traffic for all hotspot clients.",
+                    style = ShizziTheme.typography.caption,
+                    color = ShizziTheme.colors.onSurfaceMuted,
+                )
+                if (!state.blockSupported && isSessionActive) {
+                    Text(
+                        "This device does not expose the required Soft AP block-list API or permission.",
+                        style = ShizziTheme.typography.caption,
+                        color = ShizziTheme.colors.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        },
+        containerColor = ShizziTheme.colors.surface,
+    )
+}
+
+@Composable
+private fun HotspotClientCard(
+    client: HotspotClient,
+    blockSupported: Boolean,
+    onSetBlocked: (String, Boolean) -> Unit,
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = ShizziTheme.colors.background),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Text(
+                if (client.blocked) "Blocked device" else if (client.connected) "Connected device" else "Saved blocked device",
+                color = ShizziTheme.colors.primary,
+                style = ShizziTheme.typography.caption,
+            )
+            Text(client.macAddress, color = ShizziTheme.colors.onSurface)
+            Text(
+                client.ipAddress?.let { "IP address · $it" } ?: "IP address · unavailable",
+                color = ShizziTheme.colors.onSurfaceMuted,
+                style = ShizziTheme.typography.caption,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(
+                    enabled = blockSupported,
+                    onClick = { onSetBlocked(client.macAddress, !client.blocked) },
+                ) {
+                    Text(if (client.blocked) "Unblock" else "Block device")
+                }
+            }
+        }
+    }
+}
+
 private fun isShowingVpn(state: SessionUiState): Boolean {
     val hasVpn = state.isVpnBound || state.isVpnBypassed
-
     return hasVpn && state.status == UiStatus.CONNECTED
 }
 
-/** Fades content up into a slot the layout already reserves. */
 @Composable
 private fun RiseIn(isVisible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
@@ -129,29 +252,16 @@ private fun RiseIn(isVisible: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun HomeBody(state: SessionUiState, actions: HomeActions) {
     val isStarting = state.status == UiStatus.LOADING
-
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(ScreenPadding)
-            .padding(top = ShizziTheme.spacing.xxxl * 2),
+        modifier = Modifier.fillMaxSize().padding(ScreenPadding).padding(top = ShizziTheme.spacing.xxxl * 2),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         StatusIcon(status = state.status)
-
         Spacer(Modifier.height(ShizziTheme.spacing.xxxl * 2))
-
-        ConnectButton(
-            label = buttonLabel(state.status),
-            state = buttonState(state),
-            onClick = actions.onToggle,
-        )
-
+        ConnectButton(label = buttonLabel(state.status), state = buttonState(state), onClick = actions.onToggle)
         Box(modifier = Modifier.height(ShizziTheme.spacing.xxxl)) {
-            RiseIn(isVisible = isStarting) {
-                CancelButton(onClick = actions.onCancel)
-            }
+            RiseIn(isVisible = isStarting) { CancelButton(onClick = actions.onCancel) }
         }
     }
 }
