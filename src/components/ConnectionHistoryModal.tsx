@@ -35,7 +35,7 @@ export const ConnectionHistoryModal: React.FC<ConnectionHistoryModalProps> = ({
             <div className="flex items-center gap-1">
               <button onClick={onClear} disabled={entries.length === 0} className="px-2 py-1 rounded-lg text-[10px] font-bold text-rose-300 border border-rose-500/30 hover:bg-rose-500/10 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1" aria-label="Delete connection history" title="Delete history">
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete historyات</span>
+                <span>Delete History</span>
               </button>
               <Clock3 className="w-5 h-5 text-cyan-400" />
             </div>
