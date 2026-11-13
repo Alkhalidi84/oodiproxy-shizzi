@@ -90,6 +90,7 @@ fun HomePage(state: SessionUiState, actions: HomeActions) {
     if (showClients) {
         HotspotClientsDialog(
             state = state.hotspotClients,
+            connectedCount = state.clientCount,
             isSessionActive = state.status == UiStatus.CONNECTED,
             onDismiss = { showClients = false },
             onRefresh = actions.onRefreshClients,
@@ -139,6 +140,7 @@ private fun HomeHeader(
 @Composable
 private fun HotspotClientsDialog(
     state: HotspotClientsState,
+    connectedCount: Int,
     isSessionActive: Boolean,
     onDismiss: () -> Unit,
     onRefresh: () -> Unit,
@@ -155,14 +157,14 @@ private fun HotspotClientsDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    if (isSessionActive) "${state.clients.count { it.connected }} connected · ${state.clients.count { it.blocked }} blocked"
+                    if (isSessionActive) "$connectedCount connected · ${state.clients.count { it.blocked }} blocked"
                     else "Start the hotspot to inspect connected devices",
                     style = ShizziTheme.typography.caption,
                     color = ShizziTheme.colors.onSurfaceMuted,
                 )
                 if (state.clients.isEmpty()) {
                     Text(
-                        if (isSessionActive) state.message else "No live device inventory while the hotspot is stopped.",
+                        if (isSessionActive && connectedCount > 0) "Android reports $connectedCount connected device(s), but this firmware did not expose their MAC addresses." else if (isSessionActive) state.message else "No live device inventory while the hotspot is stopped.",
                         color = ShizziTheme.colors.onSurfaceMuted,
                     )
                 } else {
@@ -215,6 +217,11 @@ private fun HotspotClientCard(
             Text(client.macAddress, color = ShizziTheme.colors.onSurface)
             Text(
                 client.ipAddress?.let { "IP address · $it" } ?: "IP address · unavailable",
+                color = ShizziTheme.colors.onSurfaceMuted,
+                style = ShizziTheme.typography.caption,
+            )
+            Text(
+                "Data usage · not available on this Android build",
                 color = ShizziTheme.colors.onSurfaceMuted,
                 style = ShizziTheme.typography.caption,
             )
