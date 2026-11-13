@@ -47,6 +47,7 @@ fun SessionUiState.asStopped(): SessionUiState = copy(
     isVpnBypassed = false,
     clientCount = 0,
     traffic = Traffic(),
+    hotspotClients = HotspotClientsState(message = "Hotspot is stopped"),
 )
 
 fun SessionUiState.applyOutcome(outcome: Result<String>): SessionUiState {
@@ -62,6 +63,7 @@ fun SessionUiState.applyOutcome(outcome: Result<String>): SessionUiState {
             isVpnBypassed = false,
             clientCount = 0,
             traffic = Traffic(),
+            hotspotClients = HotspotClientsState(message = "Hotspot session ended"),
         )
     }
 
