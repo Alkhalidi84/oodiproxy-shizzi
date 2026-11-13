@@ -94,7 +94,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1">
-                <span>WireGuard MTU</span>
+                <span>Global WireGuard MTU</span>
                 <Wifi className="w-3.5 h-3.5 text-cyan-400" />
               </label>
               <input
@@ -103,12 +103,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, mtu: parseInt(e.target.value, 10) || 1280 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">Cloudflare Default: 1280</span>
+              <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1">
-                <span>Keepalive (seconds)</span>
+                <span>Global Keepalive (seconds)</span>
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
               </label>
               <input
@@ -117,7 +117,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, keepalive: parseInt(e.target.value, 10) || 25 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">Recommended: 25 seconds</span>
+              <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
           </div>
 
