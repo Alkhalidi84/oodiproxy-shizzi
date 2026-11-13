@@ -22,17 +22,17 @@ export const Footer: React.FC = () => {
       <div className="flex flex-col items-center gap-0.5">
         <p className="text-[10px] font-semibold text-slate-400/80 tracking-wide flex items-center justify-center gap-1.5">
           <span>© 2025</span>
-          <span className="text-slate-300 font-bold tracking-wider">SELOOM WARP</span>
+          <span className="text-slate-300 font-bold tracking-wider">NEXALINK</span>
           <span className="text-slate-500">|</span>
           <span className="text-cyan-400 font-semibold">WireGuard</span>
           <span className="text-slate-500">•</span>
           <a 
-            href="https://t.me/seloom1" 
+            href="https://github.com/Alkhalidi84" 
             target="_blank" 
             rel="noopener noreferrer" 
             className="text-cyan-400 hover:text-cyan-300 font-mono tracking-tight hover:underline transition-colors font-bold"
           >
-            @seloom1
+            @Alkhalidi84
           </a>
         </p>
       </div>
