@@ -6,6 +6,7 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Build;
+import android.provider.Settings;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
@@ -73,6 +74,18 @@ public class VpnBridgePlugin extends Plugin {
             call.resolve(result);
         } catch (Throwable error) {
             call.reject("تعذر قراءة التطبيقات المثبتة", error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    @PluginMethod
+    public void openVpnSettings(PluginCall call) {
+        try {
+            Intent settings = new Intent(Settings.ACTION_VPN_SETTINGS);
+            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(settings);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Unable to open Android VPN settings: " + error.getMessage(), error);
         }
     }
 
