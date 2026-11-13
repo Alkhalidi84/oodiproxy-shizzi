@@ -117,7 +117,7 @@ func TestClientCountersTrackDirectionsPerIP(t *testing.T) {
 	counters.add("192.0.2.10", false, 450)
 	counters.add("192.0.2.11", true, 7)
 
-	got := counters.statsJSON()
+	got := counters.statsJSON(1)
 	var decoded struct { Clients []clientTraffic `json:"clients"` }
 	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
 		t.Fatalf("statsJSON returned invalid JSON: %v", err)
