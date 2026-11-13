@@ -193,10 +193,9 @@ class HotspotClientManager(private val context: Context) {
         const val SOFT_AP_FEATURE_CLIENT_FORCE_DISCONNECT = 1L shl 1
         val CLIENT_SECTION_MARKERS = listOf(
             "mconnectedclients",
-            "connected clients",
-            "getconnectedclientlist()",
-            "softap clients",
-            "client list",
+            "mconnectedclientlist",
+            "connectedclients:",
+            "softap clients:",
         )
     }
 }
