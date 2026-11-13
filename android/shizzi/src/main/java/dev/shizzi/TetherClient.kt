@@ -15,7 +15,7 @@ import rikka.shizuku.Shizuku
 
 enum class UiStatus { READY, LOADING, CONNECTED, ERROR }
 
-data class HotspotClient(val macAddress: String, val ipAddress: String?, val connected: Boolean, val blocked: Boolean, val usageAvailable: Boolean = false)
+data class HotspotClient(val macAddress: String, val ipAddress: String?, val connected: Boolean, val blocked: Boolean, val usageAvailable: Boolean = false, val rxBytes: Long = 0L, val txBytes: Long = 0L)
 data class HotspotClientsState(val clients: List<HotspotClient> = emptyList(), val blockSupported: Boolean = false, val usageAvailable: Boolean = false, val message: String = "Start the hotspot to inspect connected devices", val actionMessage: String? = null)
 
 data class SessionUiState(
@@ -101,6 +101,8 @@ private fun parseHotspotClients(json: JSONObject?): HotspotClientsState {
                 connected = row.optBoolean("connected"),
                 blocked = row.optBoolean("blocked"),
                 usageAvailable = row.optBoolean("usageAvailable"),
+                rxBytes = row.optLong("rxBytes", 0L),
+                txBytes = row.optLong("txBytes", 0L),
             ))
         }
     }
