@@ -10,7 +10,7 @@ interface ConnectionHistoryModalProps {
   onClear: () => void;
 }
 
-const formatDateTime = (timestamp: number) => new Intl.DateTimeFormat('ar-IQ', {
+const formatDateTime = (timestamp: number) => new Intl.DateTimeFormat('en-IQ', {
   dateStyle: 'short',
   timeStyle: 'medium',
 }).format(new Date(timestamp));
