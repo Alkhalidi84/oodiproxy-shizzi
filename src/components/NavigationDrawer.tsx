@@ -48,7 +48,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
           <div className="flex items-center gap-2">
             <div className="flex flex-col text-left">
-              <span className="text-base font-black text-white">OODI PROXY SELOOM1</span>
+              <span className="text-base font-black text-white">NexaLink</span>
               <span className="text-[10px] text-cyan-400 font-mono">WireGuard & WARP</span>
             </div>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg">
@@ -182,12 +182,12 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           </a>
 
           <a
-            href="https://t.me/seloom1"
+            href="https://github.com/Alkhalidi84"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full p-3 rounded-xl hover:bg-slate-800/70 text-slate-200 hover:text-cyan-300 flex items-center justify-between text-xs font-bold transition-colors"
           >
-            <span className="text-cyan-400 font-mono text-[11px]">@seloom1</span>
+            <span className="text-cyan-400 font-mono text-[11px]">@Alkhalidi84</span>
             <div className="flex items-center gap-2.5">
               <span>Developer</span>
               <Activity className="w-4 h-4 text-cyan-400" />
@@ -197,7 +197,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
         {/* Drawer footer */}
         <div className="pt-4 border-t border-slate-800 text-center">
-          <div className="text-[11px] text-slate-400 font-bold">OODI PROXY SELOOM1</div>
+          <div className="text-[11px] text-slate-400 font-bold">NexaLink</div>
           <div className="text-[10px] text-slate-500 font-mono mt-0.5">WireGuard VPN & Smart Tethering</div>
         </div>
       </div>
