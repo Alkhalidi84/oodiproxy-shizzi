@@ -13,100 +13,71 @@ export const USER_DEFAULT_URI = `wireguard://98qlf4cSnq2VMmonjeWZI1dS1994IzfbR%2
  */
 export function parseWireguardUri(uriString: string): WireguardServer {
   const trimmed = uriString.trim();
-  if (!trimmed.toLowerCase().startsWith('wireguard://')) {
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error('The WireGuard link is not a valid URL');
+  }
+  if (parsed.protocol.toLowerCase() !== 'wireguard:') {
     throw new Error('Link must start with wireguard://');
   }
 
-  // Remove wireguard:// prefix
-  let remaining = trimmed.substring('wireguard://'.length);
-
-  // Extract hash/fragment for server name
-  let name = 'Warp Cloudflare';
-  const hashIdx = remaining.indexOf('#');
-  if (hashIdx !== -1) {
-    name = decodeURIComponent(remaining.substring(hashIdx + 1)).trim();
-    remaining = remaining.substring(0, hashIdx);
+  const host = parsed.hostname.replace(/^\[|\]$/g, '');
+  const port = parsed.port ? Number(parsed.port) : 2408;
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('A valid server hostname and port are required');
   }
 
-  // Extract query string
-  let queryString = '';
-  const queryIdx = remaining.indexOf('?');
-  if (queryIdx !== -1) {
-    queryString = remaining.substring(queryIdx + 1);
-    remaining = remaining.substring(0, queryIdx);
+  const params = parsed.searchParams;
+  const privateKey = params.get('privatekey') || params.get('private_key') || safeDecode(parsed.username);
+  const publicKey = params.get('publickey') || params.get('public_key') || '';
+  const isKey = (value: string) => /^[A-Za-z0-9+/]{43}=$/.test(value);
+  if (!isKey(privateKey)) {
+    throw new Error('A valid 32-byte WireGuard private key is required');
+  }
+  if (!isKey(publicKey)) {
+    throw new Error('A valid 32-byte WireGuard public key is required');
   }
 
-  // The remaining part is [userinfo@]host[:port]
-  let userPrivate = '';
-  let endpoint = remaining;
+  const name = safeDecode(parsed.hash.slice(1)).trim() || 'WireGuard Server';
+  const addresses = (params.get('address') || '172.16.0.2/32')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const dns = (params.get('dns') || '1.1.1.1,1.0.0.1')
+    .split(',').map((value) => value.trim()).filter(Boolean);
+  const allowedIPs = (params.get('allowedips') || params.get('allowed_ips') || '0.0.0.0/0')
+    .split(',').map((value) => value.trim()).filter(Boolean);
 
-  const atIdx = remaining.lastIndexOf('@');
-  if (atIdx !== -1) {
-    userPrivate = decodeURIComponent(remaining.substring(0, atIdx));
-    endpoint = remaining.substring(atIdx + 1);
-  }
-
-  // Parse endpoint into host and port
-  let host = endpoint;
-  let port = 2408;
-  const colonIdx = endpoint.lastIndexOf(':');
-  if (colonIdx !== -1) {
-    host = endpoint.substring(0, colonIdx);
-    const parsedPort = parseInt(endpoint.substring(colonIdx + 1), 10);
-    if (!isNaN(parsedPort) && parsedPort > 0) {
-      port = parsedPort;
-    }
-  }
-
-  // Parse query params
-  const params = new URLSearchParams(queryString);
-  const privateKey = decodeURIComponent(params.get('privatekey') || params.get('private_key') || userPrivate);
-  const publicKey = decodeURIComponent(params.get('publickey') || params.get('public_key') || 'bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=');
-
-  const rawAddress = params.get('address') || '172.16.0.2/32, 2606:4700:110:8d70:8df1:6e3d:693b:ea40/128';
-  const addresses = rawAddress
-    .split(',')
-    .map(a => decodeURIComponent(a).trim())
-    .filter(Boolean);
-
-  // Keep DNS IPv4-only by default. IPv6 DNS is opt-in for peers that
-  // explicitly provide IPv6 routing and an IPv6 interface address.
-  const rawDns = params.get('dns') || '1.1.1.1, 1.0.0.1';
-  const dns = rawDns
-    .split(',')
-    .map(d => decodeURIComponent(d).trim())
-    .filter(Boolean);
-
-  const mtu = parseInt(params.get('mtu') || '1280', 10) || 1280;
-  const keepalive = parseInt(params.get('keepalive') || params.get('persistentkeepalive') || '25', 10) || 25;
-
-  // Keep IPv6 opt-in. Many mobile WireGuard peers are IPv4-only; routing
-  // ::/0 to those peers can make IPv6-capable apps/sites appear offline.
-  const rawAllowed = params.get('allowedips') || params.get('allowed_ips') || '0.0.0.0/0';
-  const allowedIPs = rawAllowed
-    .split(',')
-    .map(a => decodeURIComponent(a).trim())
-    .filter(Boolean);
+  const mtuValue = Number.parseInt(params.get('mtu') || '1280', 10);
+  const keepaliveValue = Number.parseInt(params.get('keepalive') || params.get('persistentkeepalive') || '25', 10);
+  const mtu = Number.isInteger(mtuValue) && mtuValue >= 576 && mtuValue <= 9000 ? mtuValue : 1280;
+  const keepalive = Number.isInteger(keepaliveValue) && keepaliveValue >= 0 && keepaliveValue <= 65535
+    ? keepaliveValue : 25;
+  const endpoint = parsed.port ? parsed.host : `${parsed.hostname}:2408`;
 
   return {
     id: 'wg-' + Math.random().toString(36).substring(2, 9),
-    name: name || 'Cloudflare WARP',
+    name,
     rawUri: uriString,
-    endpoint: `${host}:${port}`,
+    endpoint,
     host,
     port,
-    privateKey: privateKey || '98qlf4cSnq2VMmonjeWZI1dS1994IzfbR/fRdG/iCoE=',
+    privateKey,
     publicKey,
-    addresses: addresses.length ? addresses : ['172.16.0.2/32'],
-    dns: dns.length ? dns : ['1.1.1.1'],
+    addresses,
+    dns,
     mtu,
     persistentKeepalive: keepalive,
     allowedIPs,
     protocol: 'WireGuard',
-    serverProvider: host.includes('cloudflare') ? 'Cloudflare' : 'WireGuard Node',
+    serverProvider: host.toLowerCase().includes('cloudflare') ? 'Cloudflare' : 'WireGuard Node',
     latency: null,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   };
+}
+
+function safeDecode(value: string): string {
+  try { return decodeURIComponent(value); } catch { return value; }
 }
 
 /**
@@ -199,6 +170,16 @@ export function parseWireguardConf(confText: string, serverName = 'Imported Wire
   if (colonIdx !== -1) {
     host = endpoint.substring(0, colonIdx);
     port = parseInt(endpoint.substring(colonIdx + 1), 10) || 2408;
+  }
+
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(privateKey)) {
+    throw new Error('The configuration must contain a valid 32-byte Interface PrivateKey');
+  }
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(publicKey)) {
+    throw new Error('The configuration must contain a valid 32-byte Peer PublicKey');
+  }
+  if (!endpoint || !endpoint.includes(':')) {
+    throw new Error('The configuration must contain a valid Peer Endpoint');
   }
 
   const server: WireguardServer = {
