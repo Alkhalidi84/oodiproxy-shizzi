@@ -98,6 +98,11 @@ func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer, counters *cli
 	return true
 }
 
+func countedCopy(dst, src net.Conn, counters *clientCounters, clientIP string, upload bool) {
+    count, _ := io.Copy(dst, src)
+    if counters != nil { counters.add(clientIP, upload, count) }
+}
+
 // relay copies bytes both ways until either side finishes, then closes both.
 //
 // Half-close is deliberately not propagated: a client that shuts down its write
