@@ -22,6 +22,7 @@ class TetherSession(private val context: Context) {
     private var watchdog: SessionWatchdog? = null
     private val teardown = SessionTeardown(context)
     private val downstream = DownstreamInspector()
+    private val hotspotClients = HotspotClientManager(context)
     private val vpn = VpnUpstream(context) { problem -> tearDownAfter(problem) }
 
     val isActive: Boolean get() = state == SessionState.ACTIVE
@@ -226,7 +227,11 @@ class TetherSession(private val context: Context) {
         put("bytesUp", traffic.up)
         put("bytesDown", traffic.down)
         put("clientCount", if (isActive) downstream.countDevices() else 0)
+        put("clientInventory", if (isActive) hotspotClients.snapshot() else JSONObject())
     }.toString()
+
+    fun setClientBlocked(macAddress: String, blocked: Boolean): String =
+        hotspotClients.setBlocked(macAddress, blocked).toString()
 
     private fun isVpnBypassed(): Boolean {
         if (vpnMode != VpnMode.NEVER) return false
