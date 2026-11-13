@@ -179,7 +179,7 @@ private fun HotspotClientsDialog(
                     }
                 }
                 Text(
-                    if (state.usageAvailable) "Per-device payload usage is measured by Shizzi. Counters reset when this tethering session ends."
+                    if (state.usageAvailable) "Cumulative per-device payload usage is saved locally and grouped by MAC address."
                     else state.message,
                     style = ShizziTheme.typography.caption,
                     color = ShizziTheme.colors.onSurfaceMuted,
