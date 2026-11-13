@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: nexalink-${{ github.ref }}
+  group: nexalink-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
