@@ -403,7 +403,7 @@ export default function App() {
       });
       try {
         await VpnBridge.connect({
-          serverName: activeServer.name || 'OODI PROXY SELOOM1',
+          serverName: activeServer.name || 'NexaLink',
           endpoint: activeServer.endpoint,
           dns: Array.isArray(activeServer.dns) ? activeServer.dns.join(',') : activeServer.dns,
           address: Array.isArray(activeServer.addresses) ? activeServer.addresses.join(',') : (activeServer.addresses || '172.16.0.2/32'),
