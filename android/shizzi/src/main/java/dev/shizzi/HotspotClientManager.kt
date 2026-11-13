@@ -17,15 +17,45 @@ class HotspotClientManager(private val context: Context) {
     @Volatile private var cachedSnapshot: JSONObject? = null
 
     @Synchronized
-    fun snapshot(): JSONObject {
+    fun snapshot(datapathStatsJson: String? = null): JSONObject {
         val now = System.currentTimeMillis()
-        cachedSnapshot?.takeIf { now - cachedAt < SNAPSHOT_CACHE_MS }?.let {
-            return JSONObject(it.toString())
+        val base = cachedSnapshot?.takeIf { now - cachedAt < SNAPSHOT_CACHE_MS }?.let {
+            JSONObject(it.toString())
+        } ?: readSnapshot().also {
+            cachedAt = now
+            cachedSnapshot = JSONObject(it.toString())
         }
-        val fresh = readSnapshot()
-        cachedAt = now
-        cachedSnapshot = fresh
-        return JSONObject(fresh.toString())
+        return mergeDatapathUsage(base, datapathStatsJson)
+    }
+
+    private fun mergeDatapathUsage(snapshot: JSONObject, statsJson: String?): JSONObject {
+        if (statsJson.isNullOrBlank()) return snapshot
+        val counters = runCatching { JSONObject(statsJson).optJSONArray("clients") }.getOrNull()
+            ?: return snapshot
+        val byIp = buildMap<String, JSONObject> {
+            for (index in 0 until counters.length()) {
+                val row = counters.optJSONObject(index) ?: continue
+                val ip = row.optString("ipAddress").takeIf { it.isNotBlank() } ?: continue
+                put(ip, row)
+            }
+        }
+        val clients = snapshot.optJSONArray("clients") ?: JSONArray()
+        var matched = 0
+        for (index in 0 until clients.length()) {
+            val row = clients.optJSONObject(index) ?: continue
+            val ip = row.optString("ipAddress").takeIf { it.isNotBlank() && it != "null" } ?: continue
+            val usage = byIp[ip]
+            row.put("rxBytes", usage?.optLong("downloadBytes") ?: 0L)
+            row.put("txBytes", usage?.optLong("uploadBytes") ?: 0L)
+            row.put("usageAvailable", true)
+            row.put("usageScope", "userspace_payload")
+            matched++
+        }
+        snapshot.put("usageAvailable", matched > 0)
+        snapshot.put("message", if (matched > 0)
+            "Per-device userspace payload counters are active; IP-to-device matching depends on the hotspot ARP table"
+            else "Datapath counters are active, but no connected client currently has a resolvable IP-to-MAC mapping")
+        return snapshot
     }
 
     private fun readSnapshot(): JSONObject {
