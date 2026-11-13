@@ -25,16 +25,16 @@ export const BalyBadge: React.FC<BalyBadgeProps> = ({ isBalyActive, children }) 
         <div className="flex-1 flex flex-col text-left min-w-0 pr-1">
           <div className="flex items-center justify-end gap-1.5">
             <span className="text-[12px] font-bold text-white tracking-tight flex items-center gap-1">
-              <span>تطبيق Baly (Baly)</span>
+              <span>Baly App</span>
               <Sparkles className="w-3.5 h-3.5 text-blue-400" />
             </span>
             <span className="px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-300 font-mono text-[9px] font-semibold border border-blue-400/30">Oodi 4G</span>
           </div>
-          <p className="text-[10px] text-blue-200/90 font-medium leading-tight mt-0.5 truncate">يعمل على خطوط أودي بعد اختيار تطبيق Baly</p>
+          <p className="text-[10px] text-blue-200/90 font-medium leading-tight mt-0.5 truncate">Available on supported Oodi plans when Baly mode is selected</p>
         </div>
 
         <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(2,20,64,0.8)] border border-blue-500/60 bg-[#020b24] p-0.5 flex items-center justify-center shrink-0">
-          <img src="/assets/bally.jpg" alt="شعار تطبيق Baly Baly" className="w-full h-full object-cover rounded-[10px] contrast-105 brightness-95" onError={(e) => { e.currentTarget.style.display = 'none'; const parent = e.currentTarget.parentElement; if (parent) parent.innerHTML = '<span class="text-white font-extrabold text-sm tracking-tighter">Baly</span>'; }} />
+          <img src="/assets/bally.jpg" alt="Baly app logo" className="w-full h-full object-cover rounded-[10px] contrast-105 brightness-95" onError={(e) => { e.currentTarget.style.display = 'none'; const parent = e.currentTarget.parentElement; if (parent) parent.innerHTML = '<span class="text-white font-extrabold text-sm tracking-tighter">Baly</span>'; }} />
         </div>
       </div>
       {children && <div className="mt-1.5">{children}</div>}
