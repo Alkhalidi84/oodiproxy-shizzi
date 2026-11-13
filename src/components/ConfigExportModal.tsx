@@ -112,6 +112,9 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
               <p className="text-xs text-slate-300 text-center max-w-sm">
                 Scan this code with the official <strong className="text-cyan-300">WireGuard</strong> app on your phone (Android / iOS) to add the server and connect.
               </p>
+              <p className="text-[11px] text-amber-300 text-center max-w-sm" role="note">
+                Security: this QR code contains the WireGuard private key. Only share it with a device you trust.
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
