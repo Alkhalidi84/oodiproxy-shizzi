@@ -34,6 +34,7 @@ class HotspotClientManager(private val context: Context) {
         val addresses = readArpTable()
         val config = readSoftApConfiguration()
         val blocked = config?.let(::readBlockedMacs).orEmpty()
+        val blockSupported = config != null && canBuildBlockList(config, observation.rawOutput)
 
         val all = (clients + blocked).sorted()
         val rows = JSONArray()
@@ -54,7 +55,7 @@ class HotspotClientManager(private val context: Context) {
             put("connectedCount", clients.size)
             put("blockedCount", blocked.size)
             put("inventoryAvailable", !observation.didTimeout && clients.isNotEmpty() || !observation.didTimeout)
-            put("blockSupported", config != null && canBuildBlockList(config))
+            put("blockSupported", blockSupported)
             put("usageAvailable", false)
             put(
                 "message",
@@ -75,7 +76,10 @@ class HotspotClientManager(private val context: Context) {
         val config = readSoftApConfiguration()
             ?: return result(false, "Soft AP configuration API is unavailable")
         return runCatching {
-            check(hasBlockListSupport()) { "This Wi-Fi chipset/firmware does not advertise client force-disconnect support" }
+            val wifiDump = UpstreamInspector().observeWifi()
+            check(!wifiDump.didTimeout && hasBlockListSupport(wifiDump.rawOutput)) {
+                "This Wi-Fi chipset/firmware does not advertise client force-disconnect support"
+            }
             val configClass = Class.forName("android.net.wifi.SoftApConfiguration")
             val builderClass = Class.forName("android.net.wifi.SoftApConfiguration\$Builder")
             val macClass = Class.forName("android.net.MacAddress")
@@ -119,24 +123,27 @@ class HotspotClientManager(private val context: Context) {
         wifi.javaClass.getMethod("getSoftApConfiguration").invoke(wifi)
     }.getOrNull()
 
-    private fun canBuildBlockList(configuration: Any): Boolean =
-        hasBlockListSupport() && runCatching {
+    private fun canBuildBlockList(configuration: Any, wifiDump: String): Boolean =
+        hasBlockListSupport(wifiDump) && runCatching {
             val configClass = Class.forName("android.net.wifi.SoftApConfiguration")
             val builderClass = Class.forName("android.net.wifi.SoftApConfiguration\$Builder")
             builderClass.getConstructor(configClass)
             builderClass.getMethod("setBlockedClientList", List::class.java)
         }.isSuccess
 
-    private fun hasBlockListSupport(): Boolean = runCatching {
-        val wifi = context.getSystemService(Context.WIFI_SERVICE)
-            ?: error("Wi-Fi service unavailable")
-        val capability = wifi.javaClass.getMethod("getSoftApCapability").invoke(wifi)
-            ?: error("Soft AP capability unavailable")
-        val capabilityClass = Class.forName("android.net.wifi.SoftApCapability")
-        val feature = capabilityClass.getField("SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT").getLong(null)
-        capabilityClass.getMethod("areFeaturesSupported", Long::class.javaPrimitiveType)
-            .invoke(capability, feature) as? Boolean == true
-    }.getOrDefault(false)
+    private fun hasBlockListSupport(wifiDump: String): Boolean {
+        val featureMask = Regex("""(?i)(?:mSupportedFeatures|supportedFeatures)\s*[=:]\s*(0x[0-9a-f]+|[0-9]+)""")
+            .findAll(wifiDump)
+            .mapNotNull { match ->
+                val value = match.groupValues[1]
+                runCatching {
+                    if (value.startsWith("0x", ignoreCase = true)) value.substring(2).toLong(16)
+                    else value.toLong()
+                }.getOrNull()
+            }
+            .toList()
+        return featureMask.any { mask -> (mask and SOFT_AP_FEATURE_CLIENT_FORCE_DISCONNECT) != 0L }
+    }
 
     private fun readBlockedMacs(configuration: Any): Set<String> = runCatching {
         @Suppress("UNCHECKED_CAST")
@@ -183,6 +190,7 @@ class HotspotClientManager(private val context: Context) {
         val MAC_FULL = Regex("""(?:[0-9a-f]{2}:){5}[0-9a-f]{2}""")
         val WHITESPACE = Regex("""\s+""")
         const val SNAPSHOT_CACHE_MS = 4_000L
+        const val SOFT_AP_FEATURE_CLIENT_FORCE_DISCONNECT = 1L shl 1
         val CLIENT_SECTION_MARKERS = listOf(
             "mconnectedclients",
             "connected clients",
