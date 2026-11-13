@@ -44,6 +44,10 @@ open class TetherService : ITetherService.Stub {
         runCatching { session.status() }
             .getOrElse { failure -> sessionError("getStatus", failure) }
 
+    override fun setClientBlocked(macAddress: String?, blocked: Boolean): String =
+        runCatching { session.setClientBlocked(macAddress.orEmpty(), blocked) }
+            .getOrElse { failure -> sessionError("setClientBlocked", failure) }
+
     override fun setLogging(enabled: Boolean) {
         SessionLog.setEnabled(enabled)
     }
