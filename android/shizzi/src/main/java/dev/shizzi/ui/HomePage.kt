@@ -185,7 +185,7 @@ private fun HotspotClientsDialog(
                     Text(
                         "This device does not expose the required Soft AP block-list API or permission.",
                         style = ShizziTheme.typography.caption,
-                        color = ShizziTheme.colors.error,
+                        color = ShizziTheme.colors.primary,
                     )
                 }
             }
