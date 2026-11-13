@@ -227,7 +227,8 @@ class TetherSession(private val context: Context) {
         put("bytesUp", traffic.up)
         put("bytesDown", traffic.down)
         put("clientCount", if (isActive) downstream.countDevices() else 0)
-        put("clientInventory", if (isActive) hotspotClients.snapshot() else JSONObject())
+        val datapathStats = if (isActive) resources?.datapathStatsJson() else null
+        put("clientInventory", if (isActive) hotspotClients.snapshot(datapathStats) else JSONObject())
     }.toString()
 
     fun setClientBlocked(macAddress: String, blocked: Boolean): String =
