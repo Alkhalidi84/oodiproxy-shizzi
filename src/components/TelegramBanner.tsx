@@ -46,7 +46,7 @@ export const TelegramBanner: React.FC<TelegramBannerProps> = ({ isRtl = false })
           <span>@Alkhalidi84</span>
         </div>
         <div className="flex items-center gap-2 text-slate-400 group-hover:text-slate-200 text-[11px]">
-          <span className="font-semibold">Developer</span>
+          <span className="font-semibold">Mustafa Al-Khalidi · Developer</span>
           <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
         </div>
       </a>
