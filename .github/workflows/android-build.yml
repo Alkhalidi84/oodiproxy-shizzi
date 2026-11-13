@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: nexalink-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: TypeScript and Android debug build
@@ -58,3 +62,24 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 7
+
+  datapath-tests:
+    name: Go datapath tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: third_party/shizzi/datapath/go.mod
+          cache-dependency-path: third_party/shizzi/datapath/go.sum
+
+      - name: Test userspace datapath
+        working-directory: third_party/shizzi/datapath
+        run: go test -race ./...
+
+      - name: Vet userspace datapath
+        working-directory: third_party/shizzi/datapath
+        run: go vet ./...
