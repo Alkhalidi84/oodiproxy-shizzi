@@ -8,6 +8,8 @@ interface SettingsModalProps {
   settings: AppSettings;
   onSaveSettings: (settings: AppSettings) => void;
   onResetServers: () => void;
+  onExportBackup: (password: string) => Promise<void>;
+  onImportBackup: (file: File, password: string) => Promise<void>;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -16,9 +18,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSaveSettings,
   onResetServers,
+  onExportBackup,
+  onImportBackup,
 }) => {
   const [form, setForm] = React.useState<AppSettings>(settings);
   const [savedNotice, setSavedNotice] = React.useState(false);
+  const [backupPassword, setBackupPassword] = React.useState('');
+  const [backupMessage, setBackupMessage] = React.useState('');
+  const backupFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     setForm(settings);
@@ -119,6 +126,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
               <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
+          </div>
+
+          {/* Encrypted backup and restore */}
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <div className="text-right text-xs font-bold text-slate-200">Encrypted Backup</div>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={backupPassword}
+              onChange={(event) => setBackupPassword(event.target.value)}
+              placeholder="Backup password (10+ characters)"
+              className="w-full rounded-xl border border-slate-700 bg-[#050816] px-3 py-2 text-xs text-white outline-none focus:border-cyan-500"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={backupPassword.length < 10}
+                onClick={() => {
+                  setBackupMessage('');
+                  void onExportBackup(backupPassword).then(() => setBackupMessage('Encrypted backup exported.')).catch((error) => setBackupMessage(error?.message || 'Backup export failed.'));
+                }}
+                className="rounded-xl bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+              >Export Backup</button>
+              <button
+                type="button"
+                disabled={backupPassword.length < 10}
+                onClick={() => backupFileRef.current?.click()}
+                className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 disabled:opacity-40"
+              >Import Backup</button>
+            </div>
+            <input
+              ref={backupFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                setBackupMessage('');
+                void onImportBackup(file, backupPassword).then(() => setBackupMessage('Backup restored.')).catch((error) => setBackupMessage(error?.message || 'Backup restore failed.'));
+              }}
+            />
+            <p className="text-[10px] leading-relaxed text-slate-500">Backups contain server credentials and settings. They are encrypted with AES-256-GCM; keep the password safe. Restoring is disabled while a VPN tunnel is connected.</p>
+            {backupMessage && <p role="status" className="text-[11px] text-cyan-300">{backupMessage}</p>}
           </div>
 
           {/* Reset servers button */}
