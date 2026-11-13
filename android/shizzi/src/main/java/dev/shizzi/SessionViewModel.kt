@@ -219,7 +219,19 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                             localState.update { current ->
                                 val updated = current.applyOutcome(Result.success(status))
                                 updated.copy(
-                                    hotspotClients = updated.hotspotClients.copy(actionMessage = actionMessage),
+                                    hotspotClients = updated.hotspotClients.copy(
+                                        actionMessage = actionMessage,
+                                    ),
+                                )
+                            }
+                        }
+                        .onFailure { failure ->
+                            SessionLog.warn("could not refresh hotspot client list: ${failure.message}")
+                            localState.update { current ->
+                                current.copy(
+                                    hotspotClients = current.hotspotClients.copy(
+                                        actionMessage = actionMessage,
+                                    ),
                                 )
                             }
                         }
@@ -229,9 +241,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     SessionLog.error(actionMessage.orEmpty())
                     localState.update { current ->
                         current.copy(
-                            hotspotClients = current.hotspotClients.copy(actionMessage = actionMessage),
+                            hotspotClients = current.hotspotClients.copy(
+                                actionMessage = actionMessage,
+                            ),
                         )
                     }
+                }
         }
     }
 
