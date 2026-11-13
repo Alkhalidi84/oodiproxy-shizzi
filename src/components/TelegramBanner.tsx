@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Github, UserCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface TelegramBannerProps {
   isRtl?: boolean;
@@ -21,7 +21,7 @@ export const TelegramBanner: React.FC<TelegramBannerProps> = ({ isRtl = false })
         <div className="w-full bg-[#081335]/90 hover:bg-[#0c1c4d]/90 backdrop-blur-md rounded-xl py-2 px-3 flex items-center justify-between transition-colors">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-400 to-blue-500 flex items-center justify-center shadow-[0_0_10px_rgba(6,182,212,0.5)] group-hover:scale-105 transition-transform shrink-0">
-              <Send className="w-4 h-4 text-white -translate-x-0.5 translate-y-0.5" />
+              <Github className="w-4 h-4 text-white -translate-x-0.5 translate-y-0.5" />
             </div>
 
             <div className="flex flex-col text-left">
