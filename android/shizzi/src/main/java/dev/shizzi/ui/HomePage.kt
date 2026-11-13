@@ -183,6 +183,13 @@ private fun HotspotClientsDialog(
                     style = ShizziTheme.typography.caption,
                     color = ShizziTheme.colors.onSurfaceMuted,
                 )
+                state.actionMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                    Text(
+                        message,
+                        style = ShizziTheme.typography.caption,
+                        color = ShizziTheme.colors.primary,
+                    )
+                }
                 if (!state.blockSupported && isSessionActive) {
                     Text(
                         "This device does not expose the required Soft AP block-list API or permission.",
