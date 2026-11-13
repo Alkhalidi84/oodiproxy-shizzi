@@ -21,12 +21,12 @@ function fromBase64(value: string): Uint8Array {
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
   const material = await globalThis.crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(password),
+    asArrayBuffer(new TextEncoder().encode(password)),
     'PBKDF2',
     false,
     ['deriveKey'],
   );
-  return crypto.subtle.deriveKey(
+  return globalThis.crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt: asArrayBuffer(salt), iterations: ITERATIONS, hash: 'SHA-256' },
     material,
     { name: 'AES-GCM', length: 256 },
@@ -38,11 +38,11 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 export async function encryptBackup(payload: unknown, password: string): Promise<Blob> {
   if (password.length < 10) throw new Error('Use a backup password with at least 10 characters.');
   if (!globalThis.crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
-  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const salt = globalThis.globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, plaintext);
+  const ciphertext = await globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(plaintext));
   const envelope = {
     format: FORMAT,
     version: 1,
@@ -57,7 +57,7 @@ export async function encryptBackup(payload: unknown, password: string): Promise
 }
 
 export async function decryptBackup(file: File, password: string): Promise<unknown> {
-  if (!crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
+  if (!globalThis.crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
   const envelope = JSON.parse(await file.text()) as Record<string, unknown>;
   if (envelope.format !== FORMAT || envelope.version !== 1 ||
       envelope.kdf !== 'PBKDF2-SHA256' || envelope.cipher !== 'AES-256-GCM' ||
@@ -73,7 +73,7 @@ export async function decryptBackup(file: File, password: string): Promise<unkno
   const key = await deriveKey(password, salt);
   let plaintext: ArrayBuffer;
   try {
-    plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(ciphertext));
+    plaintext = await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(ciphertext));
   } catch {
     throw new Error('The password is incorrect or the backup was modified.');
   }
