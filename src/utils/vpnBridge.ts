@@ -33,6 +33,7 @@ export interface VpnBridgePlugin {
   listApplications(): Promise<{ applications: InstalledApp[] }>;
   connect(options: VpnConnectOptions): Promise<{ status: string }>;
   disconnect(): Promise<{ status: string }>;
+  openVpnSettings(): Promise<void>;
 }
 
 const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
@@ -42,6 +43,7 @@ const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
     listApplications: async () => ({ applications: [] }),
     connect: async () => ({ status: 'connected' }),
     disconnect: async () => ({ status: 'disconnected' }),
+    openVpnSettings: async () => undefined,
   },
 });
 
