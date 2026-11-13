@@ -163,20 +163,20 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           >
             <span className="text-amber-300 text-[10px] bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30">PERMISSIONS</span>
             <div className="flex items-center gap-2.5">
-              <span>PERMISSIONS Shizzi والبطارية</span>
+              <span>Shizzi & Battery Permissions</span>
               <BatteryCharging className="w-4 h-4 text-amber-400" />
             </div>
           </button>
 
           <a
-            href="https://t.me/freevpsiraq"
+            href="https://github.com/Alkhalidi84/oodiproxy-shizzi"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full p-3 rounded-xl hover:bg-slate-800/70 text-slate-200 hover:text-cyan-300 flex items-center justify-between text-xs font-bold transition-colors"
           >
             <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
             <div className="flex items-center gap-2.5">
-              <span>Telegram Channel: freevpsiraq</span>
+              <span>Project Repository</span>
               <Activity className="w-4 h-4 text-cyan-400" />
             </div>
           </a>
@@ -189,7 +189,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           >
             <span className="text-cyan-400 font-mono text-[11px]">@Alkhalidi84</span>
             <div className="flex items-center gap-2.5">
-              <span>Developer</span>
+              <span>Mustafa Al-Khalidi · Developer</span>
               <Activity className="w-4 h-4 text-cyan-400" />
             </div>
           </a>
