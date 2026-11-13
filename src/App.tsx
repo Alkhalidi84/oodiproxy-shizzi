@@ -14,6 +14,7 @@ import { NavigationDrawer } from './components/NavigationDrawer';
 import { BalyBadge } from './components/BalyBadge';
 import { ConnectionHistoryModal } from './components/ConnectionHistoryModal';
 import { AppExclusionsModal } from './components/AppExclusionsModal';
+import { DiagnosticsModal } from './components/DiagnosticsModal';
 
 import { WireguardServer, ConnectionState, AppSettings, NetworkTelemetry, ConnectionLogEntry } from './types';
 import { getInitialServers, parseWireguardUri, USER_DEFAULT_URI } from './utils/wireguard';
@@ -140,6 +141,7 @@ export default function App() {
   const [isLoadingIp, setIsLoadingIp] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAppExclusionsOpen, setIsAppExclusionsOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [installedApplications, setInstalledApplications] = useState<InstalledApp[]>([]);
   const [cellularInfo, setCellularInfo] = useState<CellularInfo>(EMPTY_CELLULAR_INFO);
   const [isLoadingCellular, setIsLoadingCellular] = useState(false);
@@ -631,6 +633,7 @@ export default function App() {
         onOpenAddServer={() => setIsAddServerOpen(true)}
         onOpenExport={() => handleOpenExport(activeServer)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
         onOpenAppExclusions={() => setIsAppExclusionsOpen(true)}
         onOpenShizzi={() => {
           void ShizziBridge.open().catch(() => {
@@ -644,6 +647,21 @@ export default function App() {
         }}
         excludedAppsCount={settings.excludedApplications.length}
         isConnected={connectionState === 'connected'}
+      />
+
+      <DiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        connectionState={connectionState}
+        activeServerName={activeServer.name}
+        endpoint={activeServer.endpoint}
+        serverCount={servers.length}
+        telemetry={telemetry}
+        mtu={settings.mtu}
+        keepalive={settings.keepalive}
+        excludedAppsCount={settings.excludedApplications.length}
+        bypassLanRoute={settings.bypassLanRoute}
+        autoReconnect={settings.autoReconnect}
       />
 
       <AppExclusionsModal
