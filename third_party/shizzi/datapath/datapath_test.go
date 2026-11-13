@@ -142,7 +142,7 @@ func TestClientCountersConcurrentUpdates(t *testing.T) {
 	}
 	wg.Wait()
 	var decoded struct { Clients []clientTraffic `json:"clients"` }
-	if err := json.Unmarshal([]byte(counters.statsJSON()), &decoded); err != nil { t.Fatal(err) }
+	if err := json.Unmarshal([]byte(counters.statsJSON(1)), &decoded); err != nil { t.Fatal(err) }
 	if len(decoded.Clients) != 1 || decoded.Clients[0].UploadBytes != workers*increments {
 		t.Fatalf("concurrent counter mismatch: %+v", decoded.Clients)
 	}
