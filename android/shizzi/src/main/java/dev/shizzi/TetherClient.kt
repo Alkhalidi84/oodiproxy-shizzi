@@ -16,7 +16,7 @@ import rikka.shizuku.Shizuku
 enum class UiStatus { READY, LOADING, CONNECTED, ERROR }
 
 data class HotspotClient(val macAddress: String, val ipAddress: String?, val connected: Boolean, val blocked: Boolean, val usageAvailable: Boolean = false)
-data class HotspotClientsState(val clients: List<HotspotClient> = emptyList(), val blockSupported: Boolean = false, val usageAvailable: Boolean = false, val message: String = "Start the hotspot to inspect connected devices")
+data class HotspotClientsState(val clients: List<HotspotClient> = emptyList(), val blockSupported: Boolean = false, val usageAvailable: Boolean = false, val message: String = "Start the hotspot to inspect connected devices", val actionMessage: String? = null)
 
 data class SessionUiState(
     val shizukuState: ShizukuState = ShizukuState.NotRunning,
