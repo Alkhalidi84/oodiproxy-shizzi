@@ -50,9 +50,8 @@ jobs:
 
       - name: Build the Shizzi Android datapath AAR
         working-directory: third_party/shizzi/datapath
-        env:
-          ANDROID_NDK_HOME: ${GITHUB_WORKSPACE}/android-sdk/ndk/27.2.12479018
         run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
           go install golang.org/x/mobile/cmd/gomobile@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           gomobile init
