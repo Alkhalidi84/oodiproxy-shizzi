@@ -75,6 +75,7 @@ class HotspotClientManager(private val context: Context) {
         val config = readSoftApConfiguration()
             ?: return result(false, "Soft AP configuration API is unavailable")
         return runCatching {
+            check(hasBlockListSupport()) { "This Wi-Fi chipset/firmware does not advertise client force-disconnect support" }
             val configClass = Class.forName("android.net.wifi.SoftApConfiguration")
             val builderClass = Class.forName("android.net.wifi.SoftApConfiguration\$Builder")
             val macClass = Class.forName("android.net.MacAddress")
@@ -118,12 +119,24 @@ class HotspotClientManager(private val context: Context) {
         wifi.javaClass.getMethod("getSoftApConfiguration").invoke(wifi)
     }.getOrNull()
 
-    private fun canBuildBlockList(configuration: Any): Boolean = runCatching {
-        val configClass = Class.forName("android.net.wifi.SoftApConfiguration")
-        val builderClass = Class.forName("android.net.wifi.SoftApConfiguration\$Builder")
-        builderClass.getConstructor(configClass)
-        builderClass.getMethod("setBlockedClientList", List::class.java)
-    }.isSuccess
+    private fun canBuildBlockList(configuration: Any): Boolean =
+        hasBlockListSupport() && runCatching {
+            val configClass = Class.forName("android.net.wifi.SoftApConfiguration")
+            val builderClass = Class.forName("android.net.wifi.SoftApConfiguration\$Builder")
+            builderClass.getConstructor(configClass)
+            builderClass.getMethod("setBlockedClientList", List::class.java)
+        }.isSuccess
+
+    private fun hasBlockListSupport(): Boolean = runCatching {
+        val wifi = context.getSystemService(Context.WIFI_SERVICE)
+            ?: error("Wi-Fi service unavailable")
+        val capability = wifi.javaClass.getMethod("getSoftApCapability").invoke(wifi)
+            ?: error("Soft AP capability unavailable")
+        val capabilityClass = Class.forName("android.net.wifi.SoftApCapability")
+        val feature = capabilityClass.getField("SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT").getLong(null)
+        capabilityClass.getMethod("areFeaturesSupported", Long::class.javaPrimitiveType)
+            .invoke(capability, feature) as? Boolean == true
+    }.getOrDefault(false)
 
     private fun readBlockedMacs(configuration: Any): Set<String> = runCatching {
         @Suppress("UNCHECKED_CAST")
