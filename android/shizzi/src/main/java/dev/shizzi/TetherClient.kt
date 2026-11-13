@@ -15,6 +15,9 @@ import rikka.shizuku.Shizuku
 
 enum class UiStatus { READY, LOADING, CONNECTED, ERROR }
 
+data class HotspotClient(val macAddress: String, val ipAddress: String?, val connected: Boolean, val blocked: Boolean, val usageAvailable: Boolean = false)
+data class HotspotClientsState(val clients: List<HotspotClient> = emptyList(), val blockSupported: Boolean = false, val usageAvailable: Boolean = false, val message: String = "Start the hotspot to inspect connected devices")
+
 data class SessionUiState(
     val shizukuState: ShizukuState = ShizukuState.NotRunning,
     val status: UiStatus = UiStatus.READY,
@@ -28,6 +31,7 @@ data class SessionUiState(
     val clientCount: Int = 0,
 
     val traffic: Traffic = Traffic(),
+    val hotspotClients: HotspotClientsState = HotspotClientsState(),
 ) {
 
     val canStart: Boolean get() = shizukuState is ShizukuState.Ready && !isBusy
@@ -79,6 +83,30 @@ fun SessionUiState.applyOutcome(outcome: Result<String>): SessionUiState {
             up = parsed?.optLong("bytesUp") ?: 0,
             down = parsed?.optLong("bytesDown") ?: 0,
         ),
+        hotspotClients = parseHotspotClients(parsed?.optJSONObject("clientInventory")),
+    )
+}
+
+private fun parseHotspotClients(json: JSONObject?): HotspotClientsState {
+    if (json == null) return HotspotClientsState()
+    val rows = json.optJSONArray("clients")
+    val clients = buildList {
+        if (rows != null) for (index in 0 until rows.length()) {
+            val row = rows.optJSONObject(index) ?: continue
+            add(HotspotClient(
+                macAddress = row.optString("macAddress"),
+                ipAddress = row.optString("ipAddress").takeUnless { it.isBlank() || it == "null" },
+                connected = row.optBoolean("connected"),
+                blocked = row.optBoolean("blocked"),
+                usageAvailable = row.optBoolean("usageAvailable"),
+            ))
+        }
+    }
+    return HotspotClientsState(
+        clients = clients,
+        blockSupported = json.optBoolean("blockSupported"),
+        usageAvailable = json.optBoolean("usageAvailable"),
+        message = json.optString("message"),
     )
 }
 
@@ -244,6 +272,13 @@ class TetherClient {
     suspend fun status(): String = withContext(Dispatchers.IO) {
         service().status
     }
+
+    suspend fun setClientBlocked(macAddress: String, blocked: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val bound = service()
+            verifyContract(bound)
+            bound.setClientBlocked(macAddress, blocked)
+        }
 
     private fun verifyContract(bound: ITetherService) {
         val remote = bound.contractVersion
