@@ -517,12 +517,12 @@ export default function App() {
   const isBalyActive = activeServer.name.toLowerCase().includes('bally') || activeServer.name.toLowerCase().includes('بلي') || activeServer.rawUri?.includes('BALLY');
 
   return (
-    <div className="relative h-screen max-h-screen w-full bg-[#060814] text-slate-100 flex flex-col items-center justify-between overflow-hidden selection:bg-cyan-500 selection:text-black">
-      <div className="fixed inset-0 bg-[url('/assets/oodi-user-background.jpg')] bg-cover bg-center bg-no-repeat" aria-hidden="true" />
-      <div className="fixed inset-0 bg-[#030014]/35" aria-hidden="true" />
+    <div className="nexalink-app relative min-h-[100dvh] w-full text-slate-100 flex flex-col items-center overflow-x-hidden selection:bg-cyan-400 selection:text-slate-950" dir="ltr">
+      <div className="nexalink-ambient" aria-hidden="true" />
+      <div className="nexalink-noise" aria-hidden="true" />
 
       {/* Main Single-Screen Full-View Frame - No Scrolling Needed */}
-      <main className="relative w-full max-w-md mx-auto h-full flex flex-col justify-between px-3.5 py-1 z-10">
+      <main className="nexalink-shell relative w-full max-w-lg mx-auto min-h-[100dvh] flex flex-col justify-start gap-4 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] z-10">
         {/* Top Header & Mobile Status Bar */}
         <Header
           onOpenMenu={() => setIsMenuOpen(true)}
