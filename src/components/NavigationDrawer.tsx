@@ -35,7 +35,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
       <div 
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-xs bg-[#070b1e] border-l border-slate-800 h-full p-5 flex flex-col text-left shadow-2xl relative animate-in slide-in-from-right duration-300"
+        className="w-full max-w-xs bg-[#070b1e] border-r border-slate-800 h-full p-5 flex flex-col text-left shadow-2xl relative animate-in slide-in-from-left duration-300"
       >
         {/* Top Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -49,7 +49,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex flex-col text-left">
               <span className="text-base font-black text-white">NexaLink</span>
-              <span className="text-[10px] text-cyan-400 font-mono">WireGuard & WARP</span>
+              <span className="text-[10px] text-cyan-400 font-mono">WireGuard VPN & Smart Tethering</span>
             </div>
             <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg">
               <Cloud className="w-5 h-5 text-white" />
