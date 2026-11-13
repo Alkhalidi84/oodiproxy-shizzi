@@ -98,9 +98,28 @@ func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer, counters *cli
 	return true
 }
 
+type trafficCountingWriter struct {
+    destination io.Writer
+    counters *clientCounters
+    clientIP string
+    upload bool
+}
+
+func (w trafficCountingWriter) Write(payload []byte) (int, error) {
+    count, err := w.destination.Write(payload)
+    if w.counters != nil && count > 0 {
+        w.counters.add(w.clientIP, w.upload, int64(count))
+    }
+    return count, err
+}
+
 func countedCopy(dst, src net.Conn, counters *clientCounters, clientIP string, upload bool) {
-    count, _ := io.Copy(dst, src)
-    if counters != nil { counters.add(clientIP, upload, count) }
+    _, _ = io.Copy(trafficCountingWriter{
+        destination: dst,
+        counters: counters,
+        clientIP: clientIP,
+        upload: upload,
+    }, src)
 }
 
 // relay copies bytes both ways until either side finishes, then closes both.
