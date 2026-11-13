@@ -48,7 +48,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-right overflow-hidden"
+        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-left overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -61,7 +61,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           
           <div className="flex items-center gap-2">
             <h2 id="settings-title" className="text-lg font-bold text-white tracking-wide">
-              إعدادات التطبيق والشبكة
+              App & Network Settings
             </h2>
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <Settings className="w-5 h-5" />
@@ -74,7 +74,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* DNS selection */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1.5">
-              <span>خادم DNS الافتراضي</span>
+              <span>Default DNS Server</span>
               <Globe className="w-3.5 h-3.5 text-blue-400" />
             </label>
             <select
@@ -103,12 +103,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, mtu: parseInt(e.target.value, 10) || 1280 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">افتراضي Cloudflare: 1280</span>
+              <span className="text-[10px] text-slate-500 block text-left">Cloudflare Default: 1280</span>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1">
-                <span>Keepalive (ثانية)</span>
+                <span>Keepalive (seconds)</span>
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
               </label>
               <input
@@ -117,7 +117,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, keepalive: parseInt(e.target.value, 10) || 25 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">الموصى به: 25 ثانية</span>
+              <span className="text-[10px] text-slate-500 block text-left">Recommended: 25 seconds</span>
             </div>
           </div>
 
@@ -125,14 +125,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="pt-3 border-t border-slate-800/80">
             <button
               onClick={() => {
-                if (window.confirm('هل تريد استعادة قائمة الخوادم الافتراضية؟')) {
+                if (window.confirm('Restore the default server list?')) {
                   onResetServers();
                 }
               }}
               className="w-full py-2 px-3 rounded-xl bg-slate-800/60 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>إعادة تعيين الخوادم إلى الوضع الافتراضي</span>
+              <span>Reset Servers to Defaults</span>
             </button>
           </div>
         </div>
@@ -143,7 +143,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {savedNotice && (
               <>
                 <Check className="w-4 h-4" />
-                <span>تم حفظ الإعدادات</span>
+                <span>Settings saved</span>
               </>
             )}
           </div>
@@ -153,13 +153,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
             >
-              إلغاء
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-bold text-white shadow-md transition-all active:scale-95"
             >
-              حفظ
+              Save
             </button>
           </div>
         </div>
