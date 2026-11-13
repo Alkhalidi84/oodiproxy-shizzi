@@ -14,7 +14,7 @@ export const USER_DEFAULT_URI = `wireguard://98qlf4cSnq2VMmonjeWZI1dS1994IzfbR%2
 export function parseWireguardUri(uriString: string): WireguardServer {
   const trimmed = uriString.trim();
   if (!trimmed.toLowerCase().startsWith('wireguard://')) {
-    throw new Error('الرابط يجب أن يبدأ بـ wireguard:// (Must start with wireguard://)');
+    throw new Error('Link must start with wireguard://');
   }
 
   // Remove wireguard:// prefix
@@ -249,7 +249,7 @@ export function getInitialServers(): WireguardServer[] {
   // First item is the exact user provided link parsed!
   const userServer = parseWireguardUri(USER_DEFAULT_URI);
   userServer.id = 'wg-baly-oodi-primary';
-  userServer.name = 'SELOOM1-WARP BALLY (خطوط أودي)';
+  userServer.name = 'NexaLink - Baly Mode';
   userServer.serverProvider = 'Baly Oodi Fast Tunnel';
   userServer.latency = null;
 
