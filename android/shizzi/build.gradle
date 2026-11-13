@@ -9,7 +9,7 @@ android {
     defaultConfig {
         minSdk 30
         targetSdk 36
-        buildConfigField 'int', 'SERVICE_BUILD_ID', '1'
+        buildConfigField 'int', 'SERVICE_BUILD_ID', '2'
         buildConfigField 'String', 'APPLICATION_ID', '\"com.oodiproxyseloom1.shizzi\"'
         buildConfigField 'String', 'VERSION_NAME', '"2.0"'
     }
