@@ -1,6 +1,12 @@
 const ITERATIONS = 310_000;
 const FORMAT = 'nexalink-encrypted-backup';
 
+function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
 function toBase64(bytes: Uint8Array): string {
   let binary = '';
   bytes.forEach((value) => { binary += String.fromCharCode(value); });
@@ -13,7 +19,7 @@ function fromBase64(value: string): Uint8Array {
 }
 
 async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
-  const material = await crypto.subtle.importKey(
+  const material = await globalThis.crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(password),
     'PBKDF2',
@@ -21,7 +27,7 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
     ['deriveKey'],
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: asArrayBuffer(salt), iterations: ITERATIONS, hash: 'SHA-256' },
     material,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -31,12 +37,12 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 
 export async function encryptBackup(payload: unknown, password: string): Promise<Blob> {
   if (password.length < 10) throw new Error('Use a backup password with at least 10 characters.');
-  if (!crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+  if (!globalThis.crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, plaintext);
   const envelope = {
     format: FORMAT,
     version: 1,
@@ -67,7 +73,7 @@ export async function decryptBackup(file: File, password: string): Promise<unkno
   const key = await deriveKey(password, salt);
   let plaintext: ArrayBuffer;
   try {
-    plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+    plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(ciphertext));
   } catch {
     throw new Error('The password is incorrect or the backup was modified.');
   }
