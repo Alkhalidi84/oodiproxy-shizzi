@@ -10,6 +10,7 @@ interface SettingsModalProps {
   onResetServers: () => void;
   onExportBackup: (password: string) => Promise<void>;
   onImportBackup: (file: File, password: string) => Promise<void>;
+  onOpenVpnSettings: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -20,6 +21,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onResetServers,
   onExportBackup,
   onImportBackup,
+  onOpenVpnSettings,
 }) => {
   const [form, setForm] = React.useState<AppSettings>(settings);
   const [savedNotice, setSavedNotice] = React.useState(false);
@@ -126,6 +128,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               />
               <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <div className="text-right text-xs font-bold text-slate-200">Android VPN Lockdown</div>
+            <p className="text-[10px] leading-relaxed text-slate-500">Android controls Always-on VPN and Block connections without VPN. NexaLink cannot silently enable system lockdown; configure it in Android settings.</p>
+            <button type="button" onClick={onOpenVpnSettings} className="w-full rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs font-bold text-amber-200">
+              Open Android VPN Settings
+            </button>
           </div>
 
           {/* Encrypted backup and restore */}
