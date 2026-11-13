@@ -109,6 +109,8 @@ class MainActivity : ComponentActivity() {
                             onSetAutomation = viewModel::setAutomation,
                             onRegenerateAutomationToken =
                                 viewModel::regenerateAutomationToken,
+                            onRefreshHotspotClients = viewModel::refreshHotspotClients,
+                            onSetHotspotClientBlocked = viewModel::setHotspotClientBlocked,
                         ),
                     )
                 }
