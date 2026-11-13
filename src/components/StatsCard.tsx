@@ -47,11 +47,11 @@ export const StatsCard: React.FC<StatsCardProps> = ({
           <button
             type="button"
             onClick={onRefreshPing}
-            title="Test tunnel latency"
+            title="Measure internet round-trip time through the current device route"
             className="flex flex-col items-center justify-center px-0.5 cursor-pointer hover:bg-slate-800/40 rounded-lg transition-colors group"
           >
             <Activity className={`w-3 h-3 mb-0.5 ${isPinging ? 'text-yellow-400 animate-spin' : isConnected ? 'text-emerald-400' : 'text-slate-400'}`} />
-            <span className="text-[9px] text-slate-400 leading-tight group-hover:text-slate-200">Tunnel Latency</span>
+            <span className="text-[9px] text-slate-400 leading-tight group-hover:text-slate-200">Internet RTT</span>
             <span className={`text-[11px] font-bold font-mono leading-tight ${!isConnected ? 'text-slate-500' : telemetry.pingMs < 60 && telemetry.pingMs > 0 ? 'text-emerald-400' : telemetry.pingMs < 120 && telemetry.pingMs > 0 ? 'text-yellow-400' : 'text-slate-400'}`}>
               {isConnected && telemetry.pingMs > 0 ? `${telemetry.pingMs} ms` : '--'}
             </span>
