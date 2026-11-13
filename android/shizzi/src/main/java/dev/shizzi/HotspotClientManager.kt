@@ -13,7 +13,22 @@ import org.json.JSONObject
  */
 class HotspotClientManager(private val context: Context) {
 
+    @Volatile private var cachedAt = 0L
+    @Volatile private var cachedSnapshot: JSONObject? = null
+
+    @Synchronized
     fun snapshot(): JSONObject {
+        val now = System.currentTimeMillis()
+        cachedSnapshot?.takeIf { now - cachedAt < SNAPSHOT_CACHE_MS }?.let {
+            return JSONObject(it.toString())
+        }
+        val fresh = readSnapshot()
+        cachedAt = now
+        cachedSnapshot = fresh
+        return JSONObject(fresh.toString())
+    }
+
+    private fun readSnapshot(): JSONObject {
         val observation = UpstreamInspector().observeWifi()
         val clients = if (observation.didTimeout) emptySet() else parseConnectedMacs(observation.rawOutput)
         val addresses = readArpTable()
@@ -83,6 +98,7 @@ class HotspotClientManager(private val context: Context) {
             check((mac in readBlockedMacs(verified)) == shouldBlock) {
                 "The device did not retain the requested block-list change"
             }
+            cachedSnapshot = null
             result(true, if (shouldBlock) "Device added to the hotspot block list" else "Device removed from the hotspot block list")
         }.getOrElse { failure ->
             val reason = failure.cause?.message ?: failure.message ?: failure.javaClass.simpleName
@@ -153,6 +169,7 @@ class HotspotClientManager(private val context: Context) {
         val MAC_PATTERN = Regex("""(?i)(?:[0-9a-f]{2}:){5}[0-9a-f]{2}""")
         val MAC_FULL = Regex("""(?:[0-9a-f]{2}:){5}[0-9a-f]{2}""")
         val WHITESPACE = Regex("""\s+""")
+        const val SNAPSHOT_CACHE_MS = 4_000L
         val CLIENT_SECTION_MARKERS = listOf(
             "mconnectedclients",
             "connected clients",
