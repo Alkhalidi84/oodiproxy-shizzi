@@ -75,6 +75,8 @@ class SessionResources(
             }
     }
 
+    fun datapathStatsJson(): String? = runCatching { datapathSession?.statsJSON() }.getOrNull()
+
     fun bindDatapathTo(handle: Long) {
         val session = datapathSession
             ?: error("bindDatapathTo($handle): no datapath session; startDatapath must succeed first")
