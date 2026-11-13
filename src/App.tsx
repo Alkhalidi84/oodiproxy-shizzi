@@ -412,6 +412,8 @@ export default function App() {
           allowedIPs: Array.isArray(activeServer.allowedIPs) ? activeServer.allowedIPs.join(',') : '0.0.0.0/0',
           bypassLanRoute: settings.bypassLanRoute,
           excludedApplications: settings.excludedApplications,
+          mtu: activeServer.mtu || settings.mtu,
+          keepalive: activeServer.persistentKeepalive ?? settings.keepalive,
         });
         // The native service starts asynchronously. Do not mark the UI as connected
         // until the WireGuard backend reports that the tunnel is actually UP.
