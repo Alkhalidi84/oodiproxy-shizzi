@@ -685,6 +685,7 @@ export default function App() {
         onResetServers={handleResetServers}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
+        onOpenVpnSettings={() => { void VpnBridge.openVpnSettings().catch((error) => console.warn('Could not open Android VPN settings:', error)); }}
       />
 
       <ConnectionHistoryModal
