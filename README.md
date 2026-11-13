@@ -57,7 +57,7 @@ Device and OEM tethering restrictions may affect availability. A successful buil
 
 ### Prerequisites
 - Node.js and npm
-- JDK 17 or later
+- JDK 21
 - Android SDK / Android Platform 36
 - Android Gradle Plugin and Gradle versions configured in the repository
 
