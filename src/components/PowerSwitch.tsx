@@ -33,7 +33,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         onClick={onToggle}
         disabled={isConnecting}
         id="btn-vpn-power-toggle"
-        aria-label={isConnected ? "قطع الاتصال" : "الاتصال بالخادم"}
+        aria-label={isConnected ? "Disconnect" : "Connect to Server"}
         className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center transition-transform active:scale-95 group focus:outline-none ${
           isConnecting ? 'cursor-wait' : 'cursor-pointer'
         }`}
@@ -75,7 +75,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         </div>
       </button>
 
-      {/* Status Pill Badge ("متصل" / "غير متصل") */}
+      {/* Status Pill Badge ("Connected" / "غير Connected") */}
       <div className="mt-1.5 flex flex-col items-center gap-0.5">
         <div 
           className={`px-6 py-1 rounded-full flex items-center gap-2 transition-all duration-500 shadow-md border ${
@@ -96,17 +96,17 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
             }`} 
           />
           <span className="text-sm font-bold tracking-wide text-white">
-            {isConnected ? 'متصل' : isConnecting ? 'جارٍ الاتصال...' : 'غير متصل'}
+            {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'غير Connected'}
           </span>
         </div>
 
         {/* Subtitle status note */}
         <p className="text-[11px] text-slate-300 font-medium tracking-tight text-center">
           {isConnected 
-            ? 'الإنترنت يعمل بشكل طبيعي' 
+            ? 'Internet is working normally' 
             : isConnecting 
-            ? 'جاري إعداد نفق WireGuard المشفر...' 
-            : 'اضغط على الزر لتشغيل خادم WireGuard'}
+            ? 'Establishing secure WireGuard tunnel...' 
+            : 'Tap the button to connect to WireGuard'}
         </p>
       </div>
     </div>
