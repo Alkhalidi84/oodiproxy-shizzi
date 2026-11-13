@@ -13,6 +13,10 @@ import org.json.JSONObject
  */
 class HotspotClientManager(private val context: Context) {
 
+    private val usagePreferences by lazy {
+        context.getSharedPreferences("nexalink_hotspot_usage_v1", Context.MODE_PRIVATE)
+    }
+
     @Volatile private var cachedAt = 0L
     @Volatile private var cachedSnapshot: JSONObject? = null
 
@@ -30,8 +34,10 @@ class HotspotClientManager(private val context: Context) {
 
     private fun mergeDatapathUsage(snapshot: JSONObject, statsJson: String?): JSONObject {
         if (statsJson.isNullOrBlank()) return snapshot
-        val counters = runCatching { JSONObject(statsJson).optJSONArray("clients") }.getOrNull()
-            ?: return snapshot
+        val statsRoot = runCatching { JSONObject(statsJson) }.getOrNull() ?: return snapshot
+        val sessionId = statsRoot.optLong("sessionId", 0L)
+        val counters = statsRoot.optJSONArray("clients") ?: return snapshot
+        if (sessionId <= 0L) return snapshot
         val byIp = buildMap<String, JSONObject> {
             for (index in 0 until counters.length()) {
                 val row = counters.optJSONObject(index) ?: continue
@@ -44,16 +50,40 @@ class HotspotClientManager(private val context: Context) {
         for (index in 0 until clients.length()) {
             val row = clients.optJSONObject(index) ?: continue
             val ip = row.optString("ipAddress").takeIf { it.isNotBlank() && it != "null" } ?: continue
+            val mac = row.optString("macAddress").lowercase(Locale.ROOT)
             val usage = byIp[ip]
-            row.put("rxBytes", usage?.optLong("downloadBytes") ?: 0L)
-            row.put("txBytes", usage?.optLong("uploadBytes") ?: 0L)
+            val currentRx = usage?.optLong("downloadBytes") ?: 0L
+            val currentTx = usage?.optLong("uploadBytes") ?: 0L
+            val stored = runCatching {
+                JSONObject(usagePreferences.getString(mac, "{}").orEmpty())
+            }.getOrDefault(JSONObject())
+            val sameSessionAndIp = stored.optLong("sessionId", -1L) == sessionId &&
+                stored.optString("ipAddress") == ip
+            val previousRx = stored.optLong("lastRxBytes", 0L)
+            val previousTx = stored.optLong("lastTxBytes", 0L)
+            val totalRx = stored.optLong("totalRxBytes", 0L) +
+                if (sameSessionAndIp && currentRx >= previousRx) currentRx - previousRx else 0L
+            val totalTx = stored.optLong("totalTxBytes", 0L) +
+                if (sameSessionAndIp && currentTx >= previousTx) currentTx - previousTx else 0L
+            usagePreferences.edit().putString(mac, JSONObject().apply {
+                put("sessionId", sessionId)
+                put("ipAddress", ip)
+                put("lastRxBytes", currentRx)
+                put("lastTxBytes", currentTx)
+                put("totalRxBytes", totalRx)
+                put("totalTxBytes", totalTx)
+            }.toString()).apply()
+            row.put("rxBytes", totalRx)
+            row.put("txBytes", totalTx)
+            row.put("sessionRxBytes", currentRx)
+            row.put("sessionTxBytes", currentTx)
             row.put("usageAvailable", true)
-            row.put("usageScope", "userspace_payload")
+            row.put("usageScope", "userspace_payload_cumulative_by_mac")
             matched++
         }
         snapshot.put("usageAvailable", matched > 0)
         snapshot.put("message", if (matched > 0)
-            "Per-device userspace payload counters are active; IP-to-device matching depends on the hotspot ARP table"
+            "Cumulative per-device payload totals are saved locally by MAC; matching depends on the hotspot ARP table"
             else "Datapath counters are active, but no connected client currently has a resolvable IP-to-MAC mapping")
         return snapshot
     }
