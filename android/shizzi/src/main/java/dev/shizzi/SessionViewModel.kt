@@ -203,22 +203,35 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     fun setHotspotClientBlocked(macAddress: String, blocked: Boolean) {
         viewModelScope.launch {
+            var actionMessage: String? = null
             runCatching { diagnostics.setClientBlocked(macAddress, blocked) }
                 .onSuccess { raw ->
                     val result = runCatching { org.json.JSONObject(raw) }.getOrNull()
+                    actionMessage = result?.optString("message")?.takeIf { it.isNotBlank() }
+                        ?: "Hotspot block-list update failed"
                     if (result?.optBoolean("success") != true) {
-                        SessionLog.warn(result?.optString("message") ?: "Hotspot block-list update failed")
+                        SessionLog.warn(actionMessage.orEmpty())
                     } else {
-                        SessionLog.info(result.optString("message"))
+                        SessionLog.info(actionMessage.orEmpty())
                     }
                     runCatching { diagnostics.status() }
                         .onSuccess { status ->
-                            localState.update { current -> current.applyOutcome(Result.success(status)) }
+                            localState.update { current ->
+                                val updated = current.applyOutcome(Result.success(status))
+                                updated.copy(
+                                    hotspotClients = updated.hotspotClients.copy(actionMessage = actionMessage),
+                                )
+                            }
                         }
                 }
                 .onFailure { failure ->
-                    SessionLog.error("hotspot client action failed: ${failure.message}")
-                }
+                    actionMessage = "Hotspot client action failed: ${failure.message}"
+                    SessionLog.error(actionMessage.orEmpty())
+                    localState.update { current ->
+                        current.copy(
+                            hotspotClients = current.hotspotClients.copy(actionMessage = actionMessage),
+                        )
+                    }
         }
     }
 
