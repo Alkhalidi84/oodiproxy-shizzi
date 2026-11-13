@@ -28,8 +28,9 @@ const nicID tcpip.NICID = 1
 // gVisor types: gomobile carries only a narrow set across JNI, so the Kotlin
 // side sees a handle it can start and stop.
 type Session struct {
-	stack   *stack.Stack
-	binding *networkBinding
+	stack    *stack.Stack
+	binding  *networkBinding
+	counters *clientCounters
 }
 
 // Start builds a netstack over tunFD, already open, and attaches it to the TUN.
@@ -77,12 +78,13 @@ func Start(tunFD int, mtu int) (*Session, error) {
 	})
 
 	binding := &networkBinding{}
+	counters := newClientCounters()
 	installForwarders(netStack, &net.Dialer{
 		Timeout: dialTimeout,
 		Control: binding.control,
-	})
+	}, counters)
 
-	return &Session{stack: netStack, binding: binding}, nil
+	return &Session{stack: netStack, binding: binding, counters: counters}, nil
 }
 
 // SetNetwork pins every subsequent dial to a handle from
@@ -100,6 +102,14 @@ func (s *Session) SetNetwork(handle int64) {
 		return
 	}
 	s.binding.set(uint64(handle))
+}
+
+// StatsJSON returns per-client userspace payload byte counters, keyed by the
+// source IP observed at the TUN ingress. Upload is client-to-internet; download
+// is internet-to-client. These are relay payload bytes, not Ethernet/IP overhead.
+func (s *Session) StatsJSON() string {
+	if s == nil || s.counters == nil { return `{"clients":[]}` }
+	return s.counters.statsJSON()
 }
 
 // Stop tears the netstack down. It does not close the TUN fd.

@@ -1,6 +1,8 @@
 package datapath
 
 import (
+	"encoding/json"
+	"sync"
 	"testing"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
@@ -106,5 +108,42 @@ func TestStackRoutesBothFamilies(t *testing.T) {
 			}
 			route.Release()
 		})
+	}
+}
+
+func TestClientCountersTrackDirectionsPerIP(t *testing.T) {
+	counters := newClientCounters()
+	counters.add("192.0.2.10", true, 120)
+	counters.add("192.0.2.10", false, 450)
+	counters.add("192.0.2.11", true, 7)
+
+	got := counters.statsJSON()
+	var decoded struct { Clients []clientTraffic `json:"clients"` }
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("statsJSON returned invalid JSON: %v", err)
+	}
+	if len(decoded.Clients) != 2 { t.Fatalf("got %d clients, want 2", len(decoded.Clients)) }
+	if decoded.Clients[0].IPAddress != "192.0.2.10" ||
+		decoded.Clients[0].UploadBytes != 120 || decoded.Clients[0].DownloadBytes != 450 {
+		t.Fatalf("unexpected first client counters: %+v", decoded.Clients[0])
+	}
+}
+
+func TestClientCountersConcurrentUpdates(t *testing.T) {
+	counters := newClientCounters()
+	const workers, increments = 12, 100
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < increments; j++ { counters.add("192.0.2.20", true, 1) }
+		}()
+	}
+	wg.Wait()
+	var decoded struct { Clients []clientTraffic `json:"clients"` }
+	if err := json.Unmarshal([]byte(counters.statsJSON()), &decoded); err != nil { t.Fatal(err) }
+	if len(decoded.Clients) != 1 || decoded.Clients[0].UploadBytes != workers*increments {
+		t.Fatalf("concurrent counter mismatch: %+v", decoded.Clients)
 	}
 }

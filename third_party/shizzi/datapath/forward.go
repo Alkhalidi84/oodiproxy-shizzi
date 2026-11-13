@@ -36,13 +36,13 @@ const (
 // Without these the stack silently drops every packet: nothing is listening on
 // the addresses tethered clients dial, because those addresses belong to hosts
 // out on the internet rather than to this stack.
-func installForwarders(netStack *stack.Stack, dialer *net.Dialer) {
+func installForwarders(netStack *stack.Stack, dialer *net.Dialer, counters *clientCounters) {
 	tcpForwarder := tcp.NewForwarder(netStack, defaultRcvWnd, maxInFlightTCP,
-		func(request *tcp.ForwarderRequest) { forwardTCP(request, dialer) })
+		func(request *tcp.ForwarderRequest) { forwardTCP(request, dialer, counters) })
 	netStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
 
 	udpForwarder := udp.NewForwarder(netStack,
-		func(request *udp.ForwarderRequest) bool { return forwardUDP(request, dialer) })
+		func(request *udp.ForwarderRequest) bool { return forwardUDP(request, dialer, counters) })
 	netStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 }
 
@@ -51,7 +51,7 @@ func installForwarders(netStack *stack.Stack, dialer *net.Dialer) {
 // The upstream socket is dialed before the client endpoint is created, so a
 // refused or unreachable destination sends the client a RST rather than
 // completing a handshake that then dies.
-func forwardTCP(request *tcp.ForwarderRequest, dialer *net.Dialer) {
+func forwardTCP(request *tcp.ForwarderRequest, dialer *net.Dialer, counters *clientCounters) {
 	id := request.ID()
 
 	upstream, err := dialer.Dial("tcp", destinationOf(id))
@@ -70,7 +70,7 @@ func forwardTCP(request *tcp.ForwarderRequest, dialer *net.Dialer) {
 	request.Complete(false)
 
 	client := gonet.NewTCPConn(&queue, endpoint)
-	go relay(client, upstream)
+	go relayCounted(client, upstream, counters, addressString(id.RemoteAddress))
 }
 
 // forwardUDP proxies one client datagram flow to its destination.
@@ -78,7 +78,7 @@ func forwardTCP(request *tcp.ForwarderRequest, dialer *net.Dialer) {
 // Returning false leaves the request unhandled, which makes the stack send the
 // client an ICMP port unreachable — the right answer when the destination
 // could not be reached, and better than dropping the datagram silently.
-func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer) bool {
+func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer, counters *clientCounters) bool {
 	id := request.ID()
 
 	upstream, err := dialer.Dial("udp", destinationOf(id))
@@ -94,7 +94,7 @@ func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer) bool {
 	}
 
 	client := gonet.NewUDPConn(&queue, endpoint)
-	go relayDatagrams(client, upstream)
+	go relayDatagrams(client, upstream, counters, addressString(id.RemoteAddress))
 	return true
 }
 
@@ -103,18 +103,18 @@ func forwardUDP(request *udp.ForwarderRequest, dialer *net.Dialer) bool {
 // Half-close is deliberately not propagated: a client that shuts down its write
 // side still expects to read the response, but tracking that per direction adds
 // state this prototype does not need. Both sides close when either completes.
-func relay(client, upstream net.Conn) {
+func relayCounted(client, upstream net.Conn, counters *clientCounters, clientIP string) {
 	defer client.Close()
 	defer upstream.Close()
 
 	done := make(chan struct{}, 2)
 
 	go func() {
-		io.Copy(upstream, client)
+		countedCopy(upstream, client, counters, clientIP, true)
 		done <- struct{}{}
 	}()
 	go func() {
-		io.Copy(client, upstream)
+		countedCopy(client, upstream, counters, clientIP, false)
 		done <- struct{}{}
 	}()
 
@@ -125,18 +125,18 @@ func relay(client, upstream net.Conn) {
 //
 // Unlike TCP there is no close to observe, so an idle deadline is the only
 // thing that reclaims the association.
-func relayDatagrams(client, upstream net.Conn) {
+func relayDatagrams(client, upstream net.Conn, counters *clientCounters, clientIP string) {
 	defer client.Close()
 	defer upstream.Close()
 
 	done := make(chan struct{}, 2)
 
 	go func() {
-		copyWithIdleTimeout(upstream, client)
+		copyWithIdleTimeout(upstream, client, counters, clientIP, true)
 		done <- struct{}{}
 	}()
 	go func() {
-		copyWithIdleTimeout(client, upstream)
+		copyWithIdleTimeout(client, upstream, counters, clientIP, false)
 		done <- struct{}{}
 	}()
 
@@ -144,7 +144,7 @@ func relayDatagrams(client, upstream net.Conn) {
 }
 
 // copyWithIdleTimeout copies until either side errors or the flow goes idle.
-func copyWithIdleTimeout(dst, src net.Conn) {
+func copyWithIdleTimeout(dst, src net.Conn, counters *clientCounters, clientIP string, upload bool) {
 	buffer := make([]byte, maxDatagramSize)
 
 	for {
@@ -154,9 +154,9 @@ func copyWithIdleTimeout(dst, src net.Conn) {
 
 		read, err := src.Read(buffer)
 		if read > 0 {
-			if _, writeErr := dst.Write(buffer[:read]); writeErr != nil {
-				return
-			}
+			written, writeErr := dst.Write(buffer[:read])
+			if written > 0 && counters != nil { counters.add(clientIP, upload, int64(written)) }
+			if writeErr != nil || written != read { return }
 		}
 		if err != nil {
 			return
