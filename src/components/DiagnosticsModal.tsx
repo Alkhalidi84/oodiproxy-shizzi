@@ -1,7 +1,7 @@
 import React from 'react';
 import { Activity, Download, ShieldCheck, Wifi, X } from 'lucide-react';
 import VpnBridge, { VpnTrafficStats } from '../utils/vpnBridge';
-import ShizziBridge, { ShizukuStatus } from '../utils/shizziBridge';
+import ShizziBridge, { ShizziStatus } from '../utils/shizziBridge';
 import { ConnectionState, NetworkTelemetry } from '../types';
 
 interface DiagnosticsModalProps {
