@@ -51,7 +51,7 @@ export const DeviceInfoBar: React.FC<DeviceInfoBarProps> = ({
           <MapPin className="w-3.5 h-3.5 text-fuchsia-400 shrink-0" />
           <span className="text-[8px] text-slate-500">Country</span>
           <span className="text-[10px] font-bold text-slate-200 truncate">{isConnected ? country : 'Not specified'}</span>
-          <span className="text-base leading-none shrink-0" role="img" aria-label="علم Country">{isConnected ? countryFlag : '🌐'}</span>
+          <span className="text-base leading-none shrink-0" role="img" aria-label="Country flag">{isConnected ? countryFlag : '🌐'}</span>
         </div>
       </div>
 
