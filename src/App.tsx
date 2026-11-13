@@ -570,7 +570,7 @@ export default function App() {
         {/* Server & Network Controls Group */}
         <div className="flex flex-col gap-1.5 w-full my-auto">
           <button type="button" onClick={() => setIsAppExclusionsOpen(true)} className="-translate-y-1 mb-0.5 flex w-full items-center justify-between rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/70 px-3 py-2 text-[10px] font-bold text-fuchsia-300 shadow-lg shadow-fuchsia-950/20 hover:bg-fuchsia-900/70 transition-colors" dir="ltr">
-            <span className="flex items-center gap-2"><ShieldOff className="h-4 w-4 text-fuchsia-400" /><span>استثناء التطبيقات من VPN</span></span>
+            <span className="flex items-center gap-2"><ShieldOff className="h-4 w-4 text-fuchsia-400" /><span>Exclude Apps from VPN</span></span>
             <span className="rounded-full bg-fuchsia-400/80 px-2 py-0.5 text-[9px] font-black text-slate-950">{settings.excludedApplications.length}</span>
           </button>
           {/* Telegram Channel & Developer Bar */}
