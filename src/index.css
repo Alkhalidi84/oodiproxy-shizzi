@@ -187,3 +187,31 @@ button:focus-visible, [role="button"]:focus-visible, input:focus-visible, textar
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+
+/* Final polish for the complete screen and every modal surface */
+.fixed.inset-0 > div:not(.nexalink-ambient):not(.nexalink-noise) {
+  border: 1px solid rgba(148, 163, 184, .18);
+  background: linear-gradient(150deg, rgba(18, 29, 49, .985), rgba(8, 14, 27, .99));
+  box-shadow: 0 28px 90px rgba(0,0,0,.58), 0 1px 0 rgba(255,255,255,.035) inset;
+}
+.nexalink-shell > div:has(> .grid.grid-cols-4) {
+  border-radius: 1.15rem;
+  box-shadow: 0 12px 34px rgba(0,0,0,.2);
+}
+.nexalink-shell .grid.grid-cols-4 > * { min-height: 3.7rem; gap: .12rem; }
+.nexalink-shell .grid.grid-cols-4 > * span:nth-of-type(1) {
+  font-size: .62rem; letter-spacing: .015em; color: #a8b5c8;
+}
+.nexalink-shell .grid.grid-cols-4 > * span:nth-of-type(2) {
+  font-size: .78rem; font-variant-numeric: tabular-nums;
+}
+.nexalink-shell > header h1 { line-height: 1.15; }
+.nexalink-shell > header > div > div:last-child {
+  font-size: .58rem; letter-spacing: .16em; margin-top: .18rem;
+}
+.nexalink-shell [class*="shadow-"] { --tw-shadow-color: rgba(0,0,0,.22); }
+@media (max-width: 360px) {
+  .nexalink-shell { padding-left: .75rem; padding-right: .75rem; gap: .75rem; }
+  .nexalink-shell > header h1 { font-size: 1.05rem; }
+}
