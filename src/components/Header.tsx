@@ -37,7 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
             </h1>
           </div>
           <div className="text-[11px] font-bold text-cyan-300 tracking-wider">
-            NEXALINK <span className="text-slate-300 font-medium">VPN & TETHERING</span>
+            SECURE CONNECTION <span className="text-slate-400 font-medium">• SMART TETHERING</span>
           </div>
         </div>
 
