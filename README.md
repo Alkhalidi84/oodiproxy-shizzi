@@ -32,7 +32,10 @@ The application interface is English-first and uses a left-to-right layout.
 - Start hotspot sharing through Shizuku on supported devices without root.
 - Route tethered-client traffic through the selected upstream network, including an active VPN when the VPN binding mode is enabled.
 - Go-based datapath with IPv4 and IPv6 support.
-- Session status, client count, traffic counters, and recovery handling.
+- Session status, connected-client count, aggregate traffic counters, and recovery handling.
+- Connected-device panel with best-effort MAC/IP inventory and saved blocked-device list.
+- Capability-gated device blocking through Android Soft AP configuration when the OEM Wi-Fi stack supports client force-disconnect.
+- Per-device byte accounting is not currently available through the public Android tethering counters; NexaLink does not split aggregate traffic into fabricated per-device figures.
 - Shizuku permission and battery-optimization entry points.
 
 ### Network tools
@@ -54,7 +57,7 @@ Device and OEM tethering restrictions may affect availability. A successful buil
 
 ### Prerequisites
 - Node.js and npm
-- JDK 21
+- JDK 17 or later
 - Android SDK / Android Platform 36
 - Android Gradle Plugin and Gradle versions configured in the repository
 
