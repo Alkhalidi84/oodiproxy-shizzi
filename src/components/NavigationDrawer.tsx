@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Server, Plus, QrCode, Settings, Activity, ExternalLink, Cloud, ShieldOff, Zap, BatteryCharging } from 'lucide-react';
+import { X, Server, Plus, QrCode, Settings, Activity, ExternalLink, Cloud, ShieldOff, Zap, BatteryCharging, Stethoscope } from 'lucide-react';
 
 interface NavigationDrawerProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface NavigationDrawerProps {
   onOpenAddServer: () => void;
   onOpenExport: () => void;
   onOpenSettings: () => void;
+  onOpenDiagnostics: () => void;
   onOpenAppExclusions: () => void;
   onOpenShizzi: () => void;
   onOpenShizziPermissions: () => void;
@@ -22,6 +23,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onOpenAddServer,
   onOpenExport,
   onOpenSettings,
+  onOpenDiagnostics,
   onOpenAppExclusions,
   onOpenShizzi,
   onOpenShizziPermissions,
@@ -123,6 +125,20 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <div className="flex items-center gap-2.5">
               <span>Network Settings</span>
               <Settings className="w-4 h-4 text-fuchsia-400" />
+            </div>
+          </button>
+
+          <button
+            onClick={() => {
+              onClose();
+              onOpenDiagnostics();
+            }}
+            className="w-full p-3 rounded-xl hover:bg-slate-800/70 text-slate-200 hover:text-cyan-300 flex items-center justify-between text-xs font-bold transition-colors"
+          >
+            <span className="text-slate-500 text-[10px]">REPORT</span>
+            <div className="flex items-center gap-2.5">
+              <span>Network Diagnostics</span>
+              <Stethoscope className="w-4 h-4 text-cyan-400" />
             </div>
           </button>
 
