@@ -21,9 +21,9 @@ export const Footer: React.FC = () => {
       {/* Footer copyright & channel */}
       <div className="flex flex-col items-center gap-0.5">
         <p className="text-[10px] font-semibold text-slate-400/80 tracking-wide flex items-center justify-center gap-1.5">
-          <span>© 2025</span>
+          <span>© 2026</span>
           <span className="text-slate-300 font-bold tracking-wider">NEXALINK</span>
-          <span className="text-slate-500">|</span>
+          <span className="text-slate-500">|</span><span className="text-slate-400">Created by Mustafa Al-Khalidi</span><span className="text-slate-500">|</span>
           <span className="text-cyan-400 font-semibold">WireGuard</span>
           <span className="text-slate-500">•</span>
           <a 
