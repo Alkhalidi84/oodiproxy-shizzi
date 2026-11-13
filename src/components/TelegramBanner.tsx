@@ -10,7 +10,7 @@ export const TelegramBanner: React.FC<TelegramBannerProps> = ({ isRtl = false })
 
   return (
     <div className="w-full flex flex-col gap-1.5 select-none">
-      {/* Telegram Channel Button */}
+      {/* Project Repository Button */}
       <a
         href="https://github.com/Alkhalidi84"
         target="_blank"
@@ -25,7 +25,7 @@ export const TelegramBanner: React.FC<TelegramBannerProps> = ({ isRtl = false })
             </div>
 
             <div className="flex flex-col text-left">
-              <span className="text-[11px] font-bold text-slate-100 group-hover:text-cyan-300">Official Telegram Channel</span>
+              <span className="text-[11px] font-bold text-slate-100 group-hover:text-cyan-300">Project Repository</span>
               <span className="text-[10px] font-mono text-cyan-400 group-hover:text-cyan-200">github.com/Alkhalidi84</span>
             </div>
           </div>
@@ -34,7 +34,7 @@ export const TelegramBanner: React.FC<TelegramBannerProps> = ({ isRtl = false })
         </div>
       </a>
 
-      {/* Developer Telegram Credit Badge */}
+      {/* Developer Credit Badge */}
       <a
         href="https://github.com/Alkhalidi84"
         target="_blank"
