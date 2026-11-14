@@ -111,25 +111,28 @@ class SessionResources(
                 "duplicated TUN descriptor is invalid (fd=${nativeDescriptor.fd})"
             }
             val nativeFd = nativeDescriptor.fd
-            // Go's fdbased endpoint reads raw IP packets. A TestNetworkManager
-            // TUN can be different from an ordinary VpnService TUN; capture all
-            // native diagnostics before releasing this duplicate.
+            // This descriptor is a TestNetworkManager TUN, not an ordinary
+            // socket. The Go endpoint is configured explicitly for a raw TUN.
             val started = try {
                 Datapath.start(nativeFd.toLong(), mtu.toLong())
             } catch (failure: Throwable) {
                 throw IllegalStateException(
-                    "gVisor fdbased attach failed (errno/native cause): ${describeFailure(failure)}",
+                    "gVisor TUN attach failed: ${describeFailure(failure)}",
                     failure,
                 )
             }
             datapathFileDescriptor = nativeDescriptor
             datapathSession = started
         } catch (failure: Throwable) {
+            // Capture descriptor state before close(): ParcelFileDescriptor.fd
+            // becomes -1 after close and would hide the actual fd in diagnostics.
+            val duplicateFd = nativeDescriptor.fd
+            val originalValid = runCatching { descriptor.fileDescriptor.valid() }.getOrDefault(false)
             val closeFailure = runCatching { nativeDescriptor.close() }.exceptionOrNull()
             if (closeFailure != null) failure.addSuppressed(closeFailure)
             throw IllegalStateException(
-                "startDatapath failed: original fd=$originalFd, duplicate fd=${nativeDescriptor.fd}, " +
-                    "mtu=$mtu, originalValid=${descriptor.fileDescriptor.valid()}: " +
+                "startDatapath failed: original fd=$originalFd, duplicate fd=$duplicateFd, " +
+                    "mtu=$mtu, originalValid=$originalValid: " +
                     describeFailure(failure),
                 failure,
             )
