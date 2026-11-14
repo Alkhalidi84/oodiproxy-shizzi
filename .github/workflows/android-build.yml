@@ -228,7 +228,7 @@ jobs:
           APK="android/app/build/outputs/apk/debug/app-debug.apk"
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
           test -s "$APK"
-          "$AAPT" dump badging "$APK" | grep -F "package: name='com.oodiproxyseloom1.shizzi' versionCode='17' versionName='2.2.0'"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.oodiproxyseloom1.shizzi' versionCode='18' versionName='2.2.1'"
           unzip -tq "$APK"
           unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libbox.so'
           unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libwg-go.so'
