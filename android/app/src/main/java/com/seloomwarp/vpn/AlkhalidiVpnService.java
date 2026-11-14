@@ -258,7 +258,7 @@ public class AlkhalidiVpnService extends VpnService {
             org.json.JSONArray packages = new org.json.JSONArray();
             for (String item : excludedApplications.split(",")) {
                 String value = item.trim();
-                if (value.matches("[A-Za-z][A-Za-z0-9_]*(?:\\\\.[A-Za-z0-9_]+)+")) {
+                if (value.matches("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+")) {
                     packages.put(value);
                 }
             }
