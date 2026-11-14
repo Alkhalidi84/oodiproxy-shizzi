@@ -71,6 +71,7 @@ public class VpnBridgePlugin extends Plugin {
         result.put("downloadBytes", snapshot.downloadBytes);
         result.put("uploadBytes", snapshot.uploadBytes);
         result.put("latestHandshakeEpochMs", snapshot.latestHandshakeEpochMs);
+        result.put("available", snapshot.available);
         call.resolve(result);
     }
 
