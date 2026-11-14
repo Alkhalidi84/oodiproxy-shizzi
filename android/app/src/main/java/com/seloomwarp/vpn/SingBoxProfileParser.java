@@ -91,7 +91,7 @@ public final class SingBoxProfileParser {
         // then URL-safe Base64; the MIME decoder is a final compatibility path
         // for legacy links containing line breaks.
         while (payload.length() % 4 != 0) payload += "=";
-        final byte[] bytes;
+        byte[] bytes;
         try {
             bytes = Base64.getDecoder().decode(payload);
         } catch (IllegalArgumentException standardError) {
