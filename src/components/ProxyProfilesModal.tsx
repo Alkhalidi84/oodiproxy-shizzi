@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, Clipboard, Link2, Plus, Radio, Trash2, X } from 'lucide-react';
 import VpnBridge, { ParsedProxyProfile } from '../utils/vpnBridge';
 
-export interface SavedProxyProfile extends ParsedProxyProfile {
+export interface SavedProxyProfile extends Omit<ParsedProxyProfile, 'configJson'> {
   id: string;
   link: string;
   createdAt: number;
@@ -49,8 +49,9 @@ export const ProxyProfilesModal: React.FC<ProxyProfilesModalProps> = ({
 
   const saveProfile = () => {
     if (!preview) return;
+    const { configJson: _configJson, ...metadata } = preview;
     onSave({
-      ...preview,
+      ...metadata,
       id: 'proxy-' + Date.now().toString(36),
       link: link.trim(),
       createdAt: Date.now(),
