@@ -160,7 +160,10 @@ public class SeloomVpnService extends VpnService {
                 // GoBackend rejects duplicate tunnel names and concurrent state changes.
                 // Always tear down the old tunnel before creating the replacement.
                 if (tunnel != null) {
-                    try { backend.setState(tunnel, State.DOWN, null); } catch (Throwable ignored) {}
+                    backend.setState(tunnel, State.DOWN, null);
+                    if (backend.getState(tunnel) != State.DOWN) {
+                        throw new IllegalStateException("Previous WireGuard tunnel did not stop before replacement");
+                    }
                     tunnel = null;
                 }
                 tunnel = new AppTunnel(tunnelName);
