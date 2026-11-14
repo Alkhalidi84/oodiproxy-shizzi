@@ -35,7 +35,7 @@ The application interface is English-first and uses a left-to-right layout.
 - Session status, connected-client count, aggregate traffic counters, and recovery handling.
 - Connected-device panel with best-effort MAC/IP inventory and saved blocked-device list.
 - Capability-gated device blocking through Android Soft AP configuration when the OEM Wi-Fi stack supports client force-disconnect.
-- Per-device byte accounting is not currently available through the public Android tethering counters; NexaLink does not split aggregate traffic into fabricated per-device figures.
+- Experimental per-device payload accounting from relayed TCP/UDP traffic, associated with devices through the hotspot ARP IP-to-MAC table. This is not a complete Layer-2 or total tethering byte counter; offloaded, bypassed, unmapped, or non-relayed traffic may be absent.
 - Shizuku permission and battery-optimization entry points.
 
 ### Network tools
