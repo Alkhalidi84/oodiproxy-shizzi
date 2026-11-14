@@ -1,4 +1,4 @@
-export type ProtocolType = 'WireGuard' | 'VLESS' | 'VMess' | 'Trojan';
+export type ProtocolType = 'WireGuard';
 
 export interface WireguardServer {
   id: string;
