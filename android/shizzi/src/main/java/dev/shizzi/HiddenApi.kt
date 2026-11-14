@@ -349,7 +349,16 @@ class TetheringPreferenceApi(private val context: Context) {
             ?: error("setPreferTestNetworks: tethering service unavailable")
 
     fun setPreferTestNetworks(prefer: Boolean) {
-        resolveMethod().invoke(tetheringManager(), prefer)
+        val method = resolveMethod()
+        try {
+            method.invoke(tetheringManager(), prefer)
+        } catch (wrapped: java.lang.reflect.InvocationTargetException) {
+            val cause = wrapped.targetException ?: wrapped
+            throw IllegalStateException(
+                "setPreferTestNetworks($prefer) failed: ${cause.javaClass.simpleName}: ${cause.message}",
+                cause,
+            )
+        }
     }
 
     fun resolutionFailure(): String? = runCatching { resolveMethod() }.fold(
