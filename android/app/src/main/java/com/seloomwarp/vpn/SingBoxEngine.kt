@@ -70,36 +70,60 @@ internal class SingBoxEngine(
             startStatsClient()
             Log.i(TAG, "Sing-box started: " + displayName)
         } catch (failure: Throwable) {
-            running = false
             stopStatsClient()
-            runCatching { commandServer?.closeService() }
-            runCatching { commandServer?.close() }
-            commandServer = null
-            runCatching { tunDescriptor?.close() }
-            tunDescriptor?.let { vpn.onSingBoxTunClosed(it) }
-            tunDescriptor = null
+            var cleanupFailure: Throwable? = null
+            runCatching { commandServer?.closeService() }.onFailure { cleanupFailure = it }
+            runCatching { commandServer?.close() }.onFailure {
+                if (cleanupFailure == null) cleanupFailure = it else cleanupFailure?.addSuppressed(it)
+            }
+            if (cleanupFailure == null) commandServer = null
+            val descriptor = tunDescriptor
+            if (descriptor != null) {
+                runCatching { descriptor.close() }.onFailure {
+                    if (cleanupFailure == null) cleanupFailure = it else cleanupFailure?.addSuppressed(it)
+                }
+                if (cleanupFailure == null || !descriptor.fileDescriptor.valid()) {
+                    vpn.onSingBoxTunClosed(descriptor)
+                    tunDescriptor = null
+                }
+            }
+            // Keep the engine marked as running/uncertain if native cleanup failed.
+            // VpnEngineManager will then refuse to hand the TUN to another engine.
+            running = cleanupFailure != null
+            cleanupFailure?.let { failure.addSuppressed(it) }
             throw IllegalStateException("Unable to start Sing-box: " + failure.message, failure)
         }
     }
 
     override fun stop() {
-        running = false
         stopStatsClient()
         var failure: Throwable? = null
-        runCatching { commandServer?.closeService() }.onFailure { failure = it }
-        runCatching { commandServer?.close() }.onFailure {
-            if (failure == null) failure = it else failure?.addSuppressed(it)
+        val server = commandServer
+        if (server != null) {
+            runCatching { server.closeService() }.onFailure { failure = it }
+            runCatching { server.close() }.onFailure {
+                if (failure == null) failure = it else failure?.addSuppressed(it)
+            }
+            if (failure == null) commandServer = null
         }
-        commandServer = null
         interfaceMonitors.values.toList().forEach { callback ->
-            runCatching { connectivity.unregisterNetworkCallback(callback) }
+            runCatching { connectivity.unregisterNetworkCallback(callback) }.onFailure {
+                if (failure == null) failure = it else failure?.addSuppressed(it)
+            }
         }
         interfaceMonitors.clear()
-        runCatching { tunDescriptor?.close() }.onFailure {
-            if (failure == null) failure = it else failure?.addSuppressed(it)
+        val descriptor = tunDescriptor
+        if (descriptor != null) {
+            runCatching { descriptor.close() }.onFailure {
+                if (failure == null) failure = it else failure?.addSuppressed(it)
+            }
+            if (!descriptor.fileDescriptor.valid()) {
+                vpn.onSingBoxTunClosed(descriptor)
+                tunDescriptor = null
+            }
         }
-        tunDescriptor?.let { vpn.onSingBoxTunClosed(it) }
-        tunDescriptor = null
+        // isRunning is cleared only after every native resource has been released.
+        running = failure != null
         failure?.let { throw IllegalStateException("Unable to stop Sing-box cleanly", it) }
     }
 
