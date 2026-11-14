@@ -63,36 +63,11 @@ jobs:
         run: |
           set -euo pipefail
           unzip -p dist/arm64/libbox.aar classes.jar > /tmp/libbox-classes.jar
-          for class in \
-            io/nekohasekai/libbox/Libbox.class \
-            io/nekohasekai/libbox/PlatformInterface.class \
-            io/nekohasekai/libbox/TunOptions.class \
-            io/nekohasekai/libbox/CommandServer.class \
-            io/nekohasekai/libbox/CommandServerHandler.class; do
+          for class in io/nekohasekai/libbox/Libbox.class io/nekohasekai/libbox/PlatformInterface.class io/nekohasekai/libbox/TunOptions.class io/nekohasekai/libbox/CommandServer.class io/nekohasekai/libbox/CommandServerHandler.class; do
             jar tf /tmp/libbox-classes.jar | grep -Fxq "$class"
           done
-          grep -Fxq 'jni/arm64-v8a/libbox.so' <(unzip -Z1 dist/arm64/libbox.aar)
-          native_count="$(unzip -Z1 dist/arm64/libbox.aar | grep -Ec '^jni/[^/]+/[^/]+\\.so
-      - name: Record upstream pin and build toolchain
-        run: |
-          {
-            echo "Sing-box source: SagerNet/sing-box v1.14.4"
-            echo "Go: 1.26.10"
-            echo "Java: 17"
-            echo "Android NDK: r28"
-            echo "Target ABI: arm64-v8a"
-            echo "Built artifacts: libbox.aar, libbox-legacy.aar"
-          } > dist/arm64/BUILD-INFO.txt
-
-      - name: Upload libbox AARs
-        uses: actions/upload-artifact@v4
-        with:
-          name: nexalink-singbox-libbox-v1.14.4-arm64
-          path: dist/arm64/
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
- || true)"
+          unzip -Z1 dist/arm64/libbox.aar | grep -Fxq 'jni/arm64-v8a/libbox.so'
+          native_count="$(unzip -Z1 dist/arm64/libbox.aar | grep -Ec '^jni/[^/]+/[^/]+[.]so$' || true)"
           test "$native_count" -eq 1
           sha256sum -c dist/arm64/SHA256SUMS
 
