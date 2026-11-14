@@ -115,3 +115,11 @@ No new engine is considered supported until all are true:
 | VLESS / VMess / Trojan | Not currently supported by the active VPN service |
 | Xray Android adapter | Optional future work |
 | Simultaneous Sing-box + Xray TUN | Not supported by design |
+
+## Sing-box Android integration findings
+
+The official Android client does not consume libbox from a normal Maven coordinate in its Gradle file. Its Android app declares a local `app/libs/libbox.aar`; the corresponding Sing-box source provides `cmd/internal/build_libbox`, which uses gomobile binding to generate the Android AAR from `experimental/libbox`. The libbox platform contract includes `OpenTun`, interface enumeration, network monitoring, DNS transport hooks, and related callbacks. NexaLink therefore needs a real Android `PlatformInterface` adapter that hands the file descriptor from its app-owned `VpnService.Builder.establish()` to libbox, plus a tested lifecycle around `CommandServer`. Copying only the service class from the upstream app would omit essential platform behavior.
+
+The reviewed upstream Sing-box Android application source is GPL-3.0-or-later and its LICENSE also contains an additional condition restricting use of the upstream application's name or implied association in derivative works without prior consent. NexaLink must not copy/rebrand the upstream application or imply endorsement. Before distributing a libbox-based build, pin the exact Sing-box source revision, audit the license and all linked dependencies, include required notices and corresponding source as required, and obtain legal review of the additional license condition. The current NexaLink app has not yet incorporated libbox or upstream Sing-box Android application code.
+
+The current source review is architectural research only; it does not establish a supported protocol or a working Android integration.
