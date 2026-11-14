@@ -112,6 +112,44 @@ public class VpnBridgePlugin extends Plugin {
         }
     }
 
+    /**
+     * Requests an Android VPN permission flow, then starts Sing-box in the
+     * same AlkhalidiVpnService used by WireGuard. Profile parsing is validated
+     * before any service or TUN resource is created.
+     */
+    @PluginMethod
+    public synchronized void connectProxy(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("Activity unavailable");
+            return;
+        }
+        try {
+            String link = call.getString("link", "");
+            SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(link);
+            if (pendingCall != null) {
+                pendingCall.reject("A VPN permission request is already pending");
+                pendingCall = null;
+                pendingIntent = null;
+            }
+            Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                    .setAction(AlkhalidiVpnService.ACTION_CONNECT_SINGBOX);
+            put(service, AlkhalidiVpnService.EXTRA_SERVER_NAME, profile.name);
+            put(service, AlkhalidiVpnService.EXTRA_CONFIG_JSON, profile.configJson);
+            Intent permission = VpnService.prepare(activity);
+            if (permission != null) {
+                pendingCall = call;
+                pendingIntent = service;
+                startActivityForResult(call, permission, "vpnPermissionResult");
+                return;
+            }
+            startServiceSafely(service, call);
+        } catch (Throwable error) {
+            call.reject("Unable to start proxy profile: " + error.getMessage(),
+                    error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
     @PluginMethod
     public synchronized void connect(PluginCall call) {
         Activity activity = getActivity();
