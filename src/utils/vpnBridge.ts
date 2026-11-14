@@ -45,6 +45,8 @@ export interface VpnBridgePlugin {
   connectProxy(options: { link: string; bypassLanRoute?: boolean; excludedApplications?: string[] }): Promise<{ status: string }>;
   loadSecureProxyProfiles(): Promise<{ profilesJson: string }>;
   saveSecureProxyProfiles(options: { profilesJson: string }): Promise<void>;
+  loadSecureWireGuardServers(): Promise<{ serversJson: string }>;
+  saveSecureWireGuardServers(options: { serversJson: string }): Promise<void>;
   disconnect(): Promise<{ status: string }>;
   openVpnSettings(): Promise<void>;
 }
@@ -60,6 +62,8 @@ const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
     connectProxy: async () => { throw new Error('Proxy connections are available in the NexaLink Android app.'); },
     loadSecureProxyProfiles: async () => ({ profilesJson: localStorage.getItem('nexalink_proxy_profiles_v1') || '' }),
     saveSecureProxyProfiles: async ({ profilesJson }) => { localStorage.setItem('nexalink_proxy_profiles_v1', profilesJson); },
+    loadSecureWireGuardServers: async () => ({ serversJson: localStorage.getItem('nexalink_wireguard_servers_v1') || '' }),
+    saveSecureWireGuardServers: async ({ serversJson }) => { localStorage.setItem('nexalink_wireguard_servers_v1', serversJson); },
     disconnect: async () => ({ status: 'disconnected' }),
     openVpnSettings: async () => undefined,
   },
