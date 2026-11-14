@@ -228,6 +228,7 @@ export default function App() {
   const reconnectInFlightRef = useRef(false);
 
   // 4. Telemetry State
+  const [trafficStatsAvailable, setTrafficStatsAvailable] = useState(false);
   const [telemetry, setTelemetry] = useState<NetworkTelemetry>({
     durationSeconds: 0,
     uploadBytes: 0,
@@ -515,6 +516,8 @@ export default function App() {
           const traffic = await VpnBridge.getTrafficStats();
           const capturedAt = performance.now();
           if (disposed || !traffic.connected) return;
+          if (!traffic.available) { setTrafficStatsAvailable(false); return; }
+          setTrafficStatsAvailable(true);
           const previous = previousTrafficSampleRef.current;
           const elapsedSeconds = previous ? (capturedAt - previous.capturedAt) / 1000 : 0;
           const downloadDelta = previous ? traffic.downloadBytes - previous.downloadBytes : 0;
@@ -585,6 +588,7 @@ export default function App() {
       if (telemetryPollTimerRef.current) clearInterval(telemetryPollTimerRef.current);
       if (geoPollTimerRef.current) clearInterval(geoPollTimerRef.current);
       previousTrafficSampleRef.current = null;
+      setTrafficStatsAvailable(false);
     }
 
     return () => {
@@ -614,6 +618,7 @@ export default function App() {
       reconnectWantedRef.current = true;
       try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'true'); } catch { /* storage may be unavailable */ }
       previousTrafficSampleRef.current = null;
+      setTrafficStatsAvailable(false);
       setConnectionState('connecting');
       setTelemetry({
         durationSeconds: 0,
@@ -824,6 +829,7 @@ export default function App() {
           <StatsCard
             telemetry={telemetry}
             isConnected={connectionState === 'connected'}
+            trafficAvailable={trafficStatsAvailable}
             onRefreshPing={refreshRealPing}
             isPinging={isPinging}
           />
