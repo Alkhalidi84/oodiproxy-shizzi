@@ -163,6 +163,10 @@ public class AlkhalidiVpnService extends VpnService {
             if (ACTION_CONNECT_SINGBOX.equals(intent.getAction())) {
                 String config = required(intent, EXTRA_CONFIG_JSON);
                 String name = intent.getStringExtra(EXTRA_SERVER_NAME);
+                config = applySingBoxVpnPolicy(
+                        config,
+                        intent.getBooleanExtra(EXTRA_BYPASS_LAN, false),
+                        cleanPackageList(intent.getStringExtra(EXTRA_EXCLUDED_APPLICATIONS)));
                 requested = new SingBoxEngine(this, config, name == null ? "NexaLink" : name);
             } else {
                 requested = new WireGuardEngine(intent);
@@ -222,7 +226,47 @@ public class AlkhalidiVpnService extends VpnService {
             }
         }
 
-    private void stopVpn() {
+
+    /** Applies Android VPN policy to the Sing-box TUN inbound before libbox starts. */
+    private static String applySingBoxVpnPolicy(String config, boolean bypassLan,
+                                                String excludedApplications) throws Exception {
+        org.json.JSONObject root = new org.json.JSONObject(config);
+        org.json.JSONArray inbounds = root.optJSONArray("inbounds");
+        if (inbounds == null || inbounds.length() == 0) {
+            throw new IllegalArgumentException("Sing-box config has no TUN inbound");
+        }
+        org.json.JSONObject tun = null;
+        for (int i = 0; i < inbounds.length(); i++) {
+            org.json.JSONObject inbound = inbounds.optJSONObject(i);
+            if (inbound != null && "tun".equals(inbound.optString("type"))) {
+                tun = inbound;
+                break;
+            }
+        }
+        if (tun == null) throw new IllegalArgumentException("Sing-box config has no TUN inbound");
+        if (bypassLan) {
+            org.json.JSONArray excluded = new org.json.JSONArray()
+                    .put("10.0.0.0/8")
+                    .put("172.16.0.0/12")
+                    .put("192.168.0.0/16")
+                    .put("169.254.0.0/16")
+                    .put("fc00::/7")
+                    .put("fe80::/10");
+            tun.put("route_exclude_address", excluded);
+        }
+        if (excludedApplications != null && !excludedApplications.trim().isEmpty()) {
+            org.json.JSONArray packages = new org.json.JSONArray();
+            for (String item : excludedApplications.split(",")) {
+                String value = item.trim();
+                if (value.matches("[A-Za-z][A-Za-z0-9_]*(?:\\\\.[A-Za-z0-9_]+)+")) {
+                    packages.put(value);
+                }
+            }
+            if (packages.length() > 0) tun.put("exclude_package", packages);
+        }
+        return root.toString();
+    }
+\n    private void stopVpn() {
         try {
             engineManager.stop();
             stopVpnAfterEngineStopped();
