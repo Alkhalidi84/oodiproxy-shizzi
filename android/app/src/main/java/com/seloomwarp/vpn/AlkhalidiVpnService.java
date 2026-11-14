@@ -50,6 +50,9 @@ public class AlkhalidiVpnService extends VpnService {
     private Backend backend;
     private Tunnel tunnel;
     private volatile android.os.ParcelFileDescriptor singBoxTunDescriptor;
+    private volatile long singBoxUploadBytes;
+    private volatile long singBoxDownloadBytes;
+    private volatile boolean singBoxTrafficAvailable;
 
     /** Called by SingBoxEngine when libbox asks Android to establish its TUN. */
     public void onSingBoxTunEstablished(android.os.ParcelFileDescriptor descriptor) {
@@ -65,6 +68,13 @@ public class AlkhalidiVpnService extends VpnService {
         isRunning = false;
     }
 
+    /** Receives cumulative counters from libbox's native status stream. */
+    public void onSingBoxTrafficStats(long uploadBytes, long downloadBytes, boolean available) {
+        singBoxUploadBytes = Math.max(0L, uploadBytes);
+        singBoxDownloadBytes = Math.max(0L, downloadBytes);
+        singBoxTrafficAvailable = available;
+    }
+
     public static boolean isConnected() { return isRunning; }
 
     /**
@@ -74,7 +84,11 @@ public class AlkhalidiVpnService extends VpnService {
      */
     public static TrafficSnapshot getTrafficSnapshot() {
         AlkhalidiVpnService service = activeService;
-        return service == null ? TrafficSnapshot.disconnected() : service.readTrafficSnapshot();
+        if (service == null) return TrafficSnapshot.disconnected();
+        if ("sing-box".equals(service.engineManager.activeEngineId())) {
+            return service.readSingBoxTrafficSnapshot();
+        }
+        return service.readTrafficSnapshot();
     }
 
     public static final class TrafficSnapshot {
@@ -82,16 +96,22 @@ public class AlkhalidiVpnService extends VpnService {
         public final long downloadBytes;
         public final long uploadBytes;
         public final long latestHandshakeEpochMs;
+        public final boolean available;
 
         TrafficSnapshot(boolean connected, long downloadBytes, long uploadBytes, long latestHandshakeEpochMs) {
+            this(connected, downloadBytes, uploadBytes, latestHandshakeEpochMs, connected);
+        }
+
+        TrafficSnapshot(boolean connected, long downloadBytes, long uploadBytes, long latestHandshakeEpochMs, boolean available) {
             this.connected = connected;
             this.downloadBytes = Math.max(0L, downloadBytes);
             this.uploadBytes = Math.max(0L, uploadBytes);
             this.latestHandshakeEpochMs = Math.max(0L, latestHandshakeEpochMs);
+            this.available = available;
         }
 
         static TrafficSnapshot disconnected() {
-            return new TrafficSnapshot(false, 0L, 0L, 0L);
+            return new TrafficSnapshot(false, 0L, 0L, 0L, false);
         }
     }
 
@@ -244,6 +264,16 @@ public class AlkhalidiVpnService extends VpnService {
         } catch (Exception stateError) {
             return true;
         }
+    }
+
+    private TrafficSnapshot readSingBoxTrafficSnapshot() {
+        boolean connected = isRunning;
+        return new TrafficSnapshot(
+                connected,
+                singBoxDownloadBytes,
+                singBoxUploadBytes,
+                0L,
+                connected && singBoxTrafficAvailable);
     }
 
     private TrafficSnapshot readTrafficSnapshot() {
