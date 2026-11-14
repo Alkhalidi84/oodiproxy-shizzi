@@ -39,8 +39,12 @@ function readReconnectIntent(): boolean {
   try { return localStorage.getItem(STORAGE_RECONNECT_INTENT_KEY) === 'true'; } catch { return false; }
 }
 
-async function connectProxyProfile(profile: SavedProxyProfile): Promise<boolean> {
-  await VpnBridge.connectProxy({ link: profile.link });
+async function connectProxyProfile(profile: SavedProxyProfile, settings: AppSettings): Promise<boolean> {
+  await VpnBridge.connectProxy({
+    link: profile.link,
+    bypassLanRoute: settings.bypassLanRoute,
+    excludedApplications: settings.excludedApplications,
+  });
   for (let attempt = 0; attempt < 80; attempt += 1) {
     await delay(250);
     if ((await VpnBridge.isVpnConnected()).connected) return true;
