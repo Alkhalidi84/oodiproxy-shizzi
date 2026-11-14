@@ -56,7 +56,8 @@ jobs:
           mkdir -p dist/arm64
           cp libbox.aar libbox-legacy.aar dist/arm64/
           sha256sum dist/arm64/*.aar > dist/arm64/SHA256SUMS
-          unzip -l dist/arm64/libbox.aar | head -40
+          unzip -l dist/arm64/libbox.aar > dist/arm64/libbox-content.txt
+          head -40 dist/arm64/libbox-content.txt
 
       - name: Record upstream pin and build toolchain
         run: |
