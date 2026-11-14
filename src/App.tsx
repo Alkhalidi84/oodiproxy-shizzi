@@ -30,6 +30,34 @@ const STORAGE_SETTINGS_KEY = 'seloomwarp_settings_v1';
 const STORAGE_ACTIVE_SERVER_KEY = 'seloomwarp_active_id_v1';
 const STORAGE_CONNECTION_LOG_KEY = 'seloomwarp_connection_log_v1';
 
+const STORAGE_RECONNECT_INTENT_KEY = 'nexalink_reconnect_intent_v1';
+const delay = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+function readReconnectIntent(): boolean {
+  try { return localStorage.getItem(STORAGE_RECONNECT_INTENT_KEY) === 'true'; } catch { return false; }
+}
+
+async function connectWireGuard(server: WireguardServer, settings: AppSettings): Promise<boolean> {
+  await VpnBridge.connect({
+    serverName: server.name || 'NexaLink',
+    endpoint: server.endpoint,
+    dns: Array.isArray(server.dns) ? server.dns.join(',') : server.dns,
+    address: Array.isArray(server.addresses) ? server.addresses.join(',') : (server.addresses || '172.16.0.2/32'),
+    privateKey: server.privateKey,
+    publicKey: server.publicKey,
+    allowedIPs: Array.isArray(server.allowedIPs) ? server.allowedIPs.join(',') : '0.0.0.0/0',
+    bypassLanRoute: settings.bypassLanRoute,
+    excludedApplications: settings.excludedApplications,
+    mtu: settings.mtu,
+    keepalive: settings.keepalive,
+  });
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await delay(250);
+    if ((await VpnBridge.isVpnConnected()).connected) return true;
+  }
+  return false;
+}
+
 function normalizeStoredServers(value: unknown): WireguardServer[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
   return value.map((server) => {
@@ -111,6 +139,10 @@ export default function App() {
 
   // 3. Connection State (Dedicated strictly to WireGuard)
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const connectionStateRef = useRef<ConnectionState>('disconnected');
+  connectionStateRef.current = connectionState;
+  const reconnectWantedRef = useRef<boolean>(readReconnectIntent());
+  const reconnectInFlightRef = useRef(false);
 
   // 4. Telemetry State
   const [telemetry, setTelemetry] = useState<NetworkTelemetry>({
@@ -155,11 +187,69 @@ export default function App() {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void VpnBridge.isVpnConnected().then(({ connected }) => {
-        if (!cancelled) setConnectionState(connected ? 'connected' : 'disconnected');
+        if (!cancelled) {
+          if (connected) {
+            reconnectWantedRef.current = true;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'true'); } catch { /* storage may be unavailable */ }
+            setConnectionState('connected');
+          } else {
+            setConnectionState(reconnectWantedRef.current && settings.autoReconnect ? 'reconnecting' : 'disconnected');
+          }
+        }
       }).catch(() => undefined);
     }, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, []);
+
+  // Restore only a tunnel the user previously asked to keep active.
+  useEffect(() => {
+    let disposed = false;
+    const monitor = async () => {
+      if (disposed || !settings.autoReconnect || !reconnectWantedRef.current || reconnectInFlightRef.current) return;
+      const current = connectionStateRef.current;
+      if (current === 'connecting' || current === 'disconnecting') return;
+
+      reconnectInFlightRef.current = true;
+      try {
+        const native = await VpnBridge.isVpnConnected();
+        if (disposed || !reconnectWantedRef.current) return;
+        if (native.connected) {
+          if (connectionStateRef.current !== 'connected') setConnectionState('connected');
+          return;
+        }
+
+        setConnectionState('reconnecting');
+        for (const wait of [1000, 2000, 4000, 8000]) {
+          await delay(wait);
+          if (disposed || !reconnectWantedRef.current) return;
+          try {
+            if (await connectWireGuard(activeServer, settings)) {
+              setConnectionState('connected');
+              return;
+            }
+          } catch (error) {
+            console.warn('Automatic VPN reconnect attempt failed:', error);
+          }
+        }
+
+        reconnectWantedRef.current = false;
+        try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+        setConnectionState('disconnected');
+      } catch (error) {
+        console.warn('VPN recovery check failed:', error);
+        if (!disposed && reconnectWantedRef.current) setConnectionState('disconnected');
+      } finally {
+        reconnectInFlightRef.current = false;
+      }
+    };
+
+    const timer = window.setInterval(() => { void monitor(); }, 5000);
+    void monitor();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [settings.autoReconnect, activeServerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,6 +473,8 @@ export default function App() {
   // Handle Power button toggle with Real Android VPN Service
   const handleToggleConnection = async () => {
     if (connectionState === 'connected') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       setConnectionState('disconnecting');
       try {
         await VpnBridge.disconnect();
@@ -394,6 +486,8 @@ export default function App() {
         setConnectionState('disconnected');
       }, 500);
     } else if (connectionState === 'disconnected') {
+      reconnectWantedRef.current = true;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'true'); } catch { /* storage may be unavailable */ }
       previousTrafficSampleRef.current = null;
       setConnectionState('connecting');
       setTelemetry({
@@ -405,32 +499,17 @@ export default function App() {
         pingMs: 0,
       });
       try {
-        await VpnBridge.connect({
-          serverName: activeServer.name || 'NexaLink',
-          endpoint: activeServer.endpoint,
-          dns: Array.isArray(activeServer.dns) ? activeServer.dns.join(',') : activeServer.dns,
-          address: Array.isArray(activeServer.addresses) ? activeServer.addresses.join(',') : (activeServer.addresses || '172.16.0.2/32'),
-          privateKey: activeServer.privateKey,
-          publicKey: activeServer.publicKey,
-          allowedIPs: Array.isArray(activeServer.allowedIPs) ? activeServer.allowedIPs.join(',') : '0.0.0.0/0',
-          bypassLanRoute: settings.bypassLanRoute,
-          excludedApplications: settings.excludedApplications,
-          mtu: settings.mtu,
-          keepalive: settings.keepalive,
-        });
-        // The native service starts asynchronously. Do not mark the UI as connected
-        // until the WireGuard backend reports that the tunnel is actually UP.
-        let connected = false;
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          const state = await VpnBridge.isVpnConnected();
-          if (state.connected) {
-            connected = true;
-            break;
-          }
+        const connected = await connectWireGuard(activeServer, settings);
+        if (connected) {
+          setConnectionState('connected');
+        } else {
+          reconnectWantedRef.current = false;
+          try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+          setConnectionState('disconnected');
         }
-        setConnectionState(connected ? 'connected' : 'disconnected');
       } catch (err) {
+        reconnectWantedRef.current = false;
+        try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
         console.error('VPN permission or connection error:', err);
         setConnectionState('disconnected');
       }
