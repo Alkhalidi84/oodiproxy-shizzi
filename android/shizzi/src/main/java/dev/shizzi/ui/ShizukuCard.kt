@@ -98,9 +98,11 @@ private fun statusText(state: ShizukuState): String = when (state) {
     ShizukuState.NotInstalled -> "Not installed"
     ShizukuState.NotRunning -> "Not running"
     ShizukuState.PermissionRequired -> "Permission required"
+    is ShizukuState.UnsupportedIdentity -> "Unsupported identity"
 }
 
 private fun serviceText(state: ShizukuState): String = when (state) {
     is ShizukuState.Ready -> ShizukuGate.shortUid(state.uid)
+    is ShizukuState.UnsupportedIdentity -> ShizukuGate.describeUid(state.uid)
     else -> "—"
 }
