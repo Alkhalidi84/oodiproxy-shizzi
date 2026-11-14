@@ -17,6 +17,17 @@ The manual GitHub Actions workflow `.github/workflows/build-singbox-libbox.yml` 
 
 The workflow publishes both `libbox.aar` and `libbox-legacy.aar` as a CI artifact with SHA-256 checksums. This is a reproducible native-library build step, not a runtime integration or an APK containing Sing-box. The artifact must be inspected and explicitly imported into the Android build only after API and ABI checks.
 
+## Verified native artifact (2026-11-14)
+
+The pinned upstream build completed successfully for commit `387e742113f1f265058136b144ad8458845108d8`.
+
+- `libbox.aar`: 28,678,035 bytes.
+- Native library: `jni/arm64-v8a/libbox.so` (80,947,216 bytes inside the AAR).
+- The generated Java API includes `PlatformInterface`, `TunOptions`, `CommandServer`, and `CommandServerHandler`.
+- SHA-256: `9b6d9a862907e77683ba1f00dbcb28c5d76f3e431c039f50f22a38f7b8471ede`.
+
+A follow-up CI gate now checks those required API classes, confirms that the AAR contains exactly one native ABI (arm64-v8a), and verifies the published checksums before the artifact is uploaded. This is a build-integrity check only: it does not imply that the AAR is packaged in NexaLink or that a Sing-box VPN session has been tested.
+
 ## Runtime integration design
 
 1. **One VPN owner.** Keep `AlkhalidiVpnService` as the sole Android `VpnService`. WireGuard and Sing-box must implement the same internal engine contract and be mutually exclusive through `VpnEngineManager`. Never let both engines establish or own a TUN concurrently.
