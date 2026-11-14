@@ -14,9 +14,9 @@ This is intentionally not a design that starts two independent VPN engines at on
 - Current connect payload and parser: WireGuard-specific.
 - `ProtocolType` is currently restricted to `WireGuard`, matching the only protocol implemented by the current parser, native bridge and service. VLESS, VMess and Trojan are intentionally not exposed as supported profile types until a real engine adapter is integrated and exercised.
 
-## Lifecycle foundation (implemented, not yet wired into the service)
+## Lifecycle foundation (WireGuard adapter connected; proxy engines pending)
 
-`VpnEngineManager` now provides a platform-neutral, serialized ownership boundary for engine adapters. It stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that a requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions. The current `SeloomVpnService` still calls WireGuard `GoBackend` directly; the manager is not yet connected to that service, and no Sing-box adapter exists. This is a tested-design foundation only, not a completed engine migration.
+`VpnEngineManager` provides a platform-neutral, serialized ownership boundary for engine adapters. `SeloomVpnService` now routes WireGuard start/stop through a `WireGuardEngine` adapter backed by the existing `GoBackend`. The manager stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that the requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions, including failed stop and failed rollback cases. The service still has a WireGuard-specific profile parser and backend; this is the first lifecycle integration step, not yet a shared TUN/platform abstraction. No Sing-box or Xray adapter exists.
 
 ## Target architecture
 
@@ -43,7 +43,7 @@ One app-owned Android VpnService / TUN owner
         +---- Shizuku / Shizzi tethering datapath
 ```
 
-The diagram describes the target boundary, not completed code. The existing WireGuard service is the only implemented VPN engine today.
+The diagram is the target boundary. The WireGuard adapter is now connected to the manager inside the existing Android VPN service; the Sing-box and Xray adapters remain planned.
 
 ## Engine selection policy
 
@@ -112,10 +112,10 @@ No new engine is considered supported until all are true:
 
 | Capability | Status |
 |---|---|
-| WireGuard native VPN | Implemented; requires device validation |
+| WireGuard native VPN | Implemented through `VpnEngineManager` adapter; requires device validation |
 | Shizuku smart tethering | Implemented; device/OEM dependent |
 | Per-device usage | Experimental; userspace payload counters only |
-| Sing-box Android adapter | Planned; not integrated |
+| Sing-box Android adapter | Planned; libbox not integrated |
 | VLESS / VMess / Trojan | Not currently supported by the active VPN service |
 | Xray Android adapter | Optional future work |
 | Simultaneous Sing-box + Xray TUN | Not supported by design |
