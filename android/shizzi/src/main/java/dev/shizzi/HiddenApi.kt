@@ -322,6 +322,21 @@ class TestNetworkApi(private val context: Context) {
     }
 }
 
+class TunHandle(private val delegate: Any) {
+
+    val interfaceName: String
+        get() {
+            val method = delegate.javaClass.getMethod("getInterfaceName")
+            return method.invoke(delegate) as String
+        }
+
+    val fileDescriptor: ParcelFileDescriptor
+        get() {
+            val method = delegate.javaClass.getMethod("getFileDescriptor")
+            return method.invoke(delegate) as ParcelFileDescriptor
+        }
+}
+
 class TetheringPreferenceApi(private val context: Context) {
 
     private fun resolveMethod(): Method {
