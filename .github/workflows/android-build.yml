@@ -173,9 +173,12 @@ jobs:
               with open(datapath_aar, "wb") as out:
                   out.write(replacement.getvalue())
 
-              remaining = class_names(jars[0]) - set(duplicates)
+              with zipfile.ZipFile(rebuilt_classes) as rebuilt_jar:
+                  rebuilt_names = {n for n in rebuilt_jar.namelist()
+                                   if n.startswith("go/") and n.endswith(".class")}
+              remaining = rebuilt_names & libbox_classes
               if remaining:
-                  raise SystemExit("Unexpected duplicate runtime classes remain: " + ", ".join(sorted(remaining)))
+                  raise SystemExit("Duplicate runtime classes remain: " + ", ".join(sorted(remaining)))
               print("Verified and shared", len(duplicates), "gomobile runtime classes")
           PY
 
