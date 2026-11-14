@@ -71,6 +71,7 @@ public final class SingBoxProfileParser {
         outbound.put("server", host);
         outbound.put("server_port", port);
         if ("vless".equals(scheme)) {
+            validateUuid(user, "VLESS");
             outbound.put("uuid", user);
             String flow = value(query, "flow", "");
             if (!flow.isEmpty()) outbound.put("flow", flow);
@@ -120,6 +121,7 @@ public final class SingBoxProfileParser {
         if (host.isEmpty() || port == 0 || uuid.isEmpty()) {
             throw new IllegalArgumentException("VMess profile is missing server, port or UUID");
         }
+        validateUuid(uuid, "VMess");
         JSONObject outbound = new JSONObject();
         outbound.put("type", "vmess");
         outbound.put("tag", "proxy");
@@ -233,7 +235,7 @@ public final class SingBoxProfileParser {
                 .put("inbounds", new JSONArray().put(new JSONObject()
                         .put("type", "tun").put("tag", "tun-in")
                         .put("address", new JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126"))
-                        .put("mtu", 9000).put("auto_route", true).put("strict_route", true)
+                        .put("mtu", 1500).put("auto_route", true).put("strict_route", true)
                         .put("stack", "system")) )
                 .put("outbounds", outbounds)
                 .put("route", route);
@@ -262,6 +264,12 @@ public final class SingBoxProfileParser {
             return URLDecoder.decode(value.replace("+", "%2B"), "UTF-8");
         } catch (Exception ignored) {
             return value;
+        }
+    }
+
+    private static void validateUuid(String value, String protocol) {
+        if (value == null || !value.matches("(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            throw new IllegalArgumentException(protocol + " profile must contain a valid UUID");
         }
     }
 
