@@ -132,8 +132,9 @@ public class SeloomVpnService extends VpnService {
                 if (backend == null) throw new IllegalStateException("WireGuard backend unavailable");
                 if (!hasValidCidr(address) || !hasValidCidr(allowedIPs)) throw new IllegalArgumentException("Invalid VPN route");
                 if (!isEndpoint(endpoint)) throw new IllegalArgumentException("Invalid VPN endpoint");
-                // Split default routes keep Android's local-network routes available when requested.
-                if (bypassLan) allowedIPs = "0.0.0.0/1,128.0.0.0/1,::/1,8000::/1";
+                // Split only address-family defaults that the peer actually routes.
+                // IPv4-only peers must not acquire synthetic IPv6 routes.
+                allowedIPs = VpnRoutePolicy.applyLanBypass(allowedIPs, bypassLan);
 
                 String tunnelName = safeTunnelName(intent.getStringExtra(EXTRA_SERVER_NAME));
                 String excludedLine = excludedApplications.isEmpty() ? "" : "ExcludedApplications = " + excludedApplications + "\n";
