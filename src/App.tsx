@@ -51,10 +51,17 @@ async function connectWireGuard(server: WireguardServer, settings: AppSettings):
     mtu: settings.mtu,
     keepalive: settings.keepalive,
   });
-  for (let attempt = 0; attempt < 12; attempt += 1) {
+  // Native VPN startup can take several seconds on slower Android devices.
+  // Confirm the actual VpnService state instead of treating the start command
+  // response as a successful connection.
+  for (let attempt = 0; attempt < 80; attempt += 1) {
     await delay(250);
     if ((await VpnBridge.isVpnConnected()).connected) return true;
   }
+
+  // A timed-out startup must not leave a background tunnel running while the
+  // UI says "disconnected".
+  await VpnBridge.disconnect().catch(() => undefined);
   return false;
 }
 
