@@ -6,6 +6,7 @@ import { NetworkTelemetry } from '../types';
 interface StatsCardProps {
   telemetry: NetworkTelemetry;
   isConnected: boolean;
+  trafficAvailable?: boolean;
   onRefreshPing?: () => void;
   isPinging?: boolean;
 }
@@ -13,6 +14,7 @@ interface StatsCardProps {
 export const StatsCard: React.FC<StatsCardProps> = ({
   telemetry,
   isConnected,
+  trafficAvailable = true,
   onRefreshPing,
   isPinging = false,
 }) => {
@@ -32,7 +34,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             <ArrowUp className="w-3 h-3 text-cyan-400 mb-0.5" />
             <span className="text-[9px] text-slate-400 leading-tight">Upload</span>
             <span className="text-[11px] text-emerald-400 font-mono font-semibold leading-tight">
-              {isConnected ? formatTransferRate(telemetry.uploadSpeedKBs) : '--'}
+              {isConnected && trafficAvailable ? formatTransferRate(telemetry.uploadSpeedKBs) : '--'}
             </span>
           </div>
 
@@ -40,7 +42,7 @@ export const StatsCard: React.FC<StatsCardProps> = ({
             <ArrowDown className="w-3 h-3 text-cyan-400 mb-0.5" />
             <span className="text-[9px] text-slate-400 leading-tight">Download</span>
             <span className="text-[11px] text-cyan-300 font-mono font-semibold leading-tight">
-              {isConnected ? formatTransferRate(telemetry.downloadSpeedKBs) : '--'}
+              {isConnected && trafficAvailable ? formatTransferRate(telemetry.downloadSpeedKBs) : '--'}
             </span>
           </div>
 
