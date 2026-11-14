@@ -5,8 +5,8 @@ import android.net.Network
 import android.net.NetworkRequest
 import android.os.Binder
 import android.os.ParcelFileDescriptor
-import datapath.Datapath
-import datapath.Session as DatapathSession
+import dev.shizzi.gomobile.datapath.Datapath
+import dev.shizzi.gomobile.datapath.Session as DatapathSession
 
 class SessionResources(
     private val testNetworkApi: TestNetworkApi,
