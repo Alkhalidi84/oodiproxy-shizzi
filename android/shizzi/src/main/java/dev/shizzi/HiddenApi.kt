@@ -197,18 +197,28 @@ class TestNetworkApi(private val context: Context) {
 
         // Preserve platform exceptions: swallowing InvocationTargetException hid
         // OEM/API incompatibilities as if they were invalid TUN descriptors.
-        val failures = mutableListOf<String>()
-        val created = try {
-            invokeCollectionOverload(owner, instance, addresses)?.also {
-                failures += "Collection overload succeeded"
-            } ?: invokeArrayOverload(owner, instance, addresses)?.also {
-                failures += "LinkAddress[] overload succeeded"
-            } ?: error("no supported createTunInterface overload returned an interface; " + failures.joinToString("; "))
-        } catch (failure: Throwable) {
+        val failures = mutableListOf<Throwable>()
+        var created: Any? = null
+        for ((label, factory) in listOf(
+            "Collection" to { invokeCollectionOverload(owner, instance, addresses) },
+            "LinkAddress[]" to { invokeArrayOverload(owner, instance, addresses) },
+        )) {
+            try {
+                created = factory()
+                if (created != null) break
+                failures += IllegalStateException("$label overload returned null")
+            } catch (failure: Throwable) {
+                failures += failure
+            }
+        }
+        if (created == null) {
+            val detail = failures.joinToString("; ") {
+                "${it.javaClass.simpleName}: ${it.message}"
+            }
             throw IllegalStateException(
-                "createTunInterface failed for ${addresses.joinToString()}: ${failure.javaClass.simpleName}: ${failure.message}",
-                failure,
-            )
+                "createTunInterface: all overloads failed for ${addresses.joinToString()}: $detail",
+                failures.firstOrNull(),
+            ).also { error -> failures.drop(1).forEach(error::addSuppressed) }
         }
 
         return TunHandle(created)
