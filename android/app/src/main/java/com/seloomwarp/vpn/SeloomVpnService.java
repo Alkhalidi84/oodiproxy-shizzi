@@ -121,7 +121,7 @@ public class SeloomVpnService extends VpnService {
             engineManager.start(new WireGuardEngine(intent));
         } catch (Exception error) {
             synchronized (tunnelLock) {
-                isRunning = backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+                isRunning = isWireGuardTunnelRunningLocked();
             }
             if (!isRunning) stopVpnAfterEngineStopped();
         }
@@ -179,7 +179,7 @@ public class SeloomVpnService extends VpnService {
             stopVpnAfterEngineStopped();
         } catch (Exception error) {
             synchronized (tunnelLock) {
-                isRunning = backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+                isRunning = isWireGuardTunnelRunningLocked();
             }
         }
     }
@@ -203,6 +203,20 @@ public class SeloomVpnService extends VpnService {
             }
             tunnel = null;
             isRunning = false;
+        }
+    }
+
+    /**
+     * A failed backend state query is treated as running/uncertain. This keeps
+     * engine ownership conservative and prevents a second engine taking the TUN.
+     * Caller must hold tunnelLock.
+     */
+    private boolean isWireGuardTunnelRunningLocked() {
+        if (backend == null || tunnel == null) return false;
+        try {
+            return backend.getState(tunnel) == State.UP;
+        } catch (Exception stateError) {
+            return true;
         }
     }
 
@@ -314,7 +328,7 @@ public class SeloomVpnService extends VpnService {
         @Override public void stop() throws Exception { stopWireGuardTunnel(); }
         @Override public boolean isRunning() {
             synchronized (tunnelLock) {
-                return backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+                return isWireGuardTunnelRunningLocked();
             }
         }
     }
