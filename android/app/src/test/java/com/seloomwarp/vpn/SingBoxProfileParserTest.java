@@ -13,6 +13,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 public class SingBoxProfileParserTest {
+    @Test public void rejectsOversizedShareLinks() {
+        assertThrows(IllegalArgumentException.class,
+                () -> SingBoxProfileParser.parse("vless://" + "a".repeat(16 * 1024)));
+    }
+
     @Test public void rejectsUnsupportedSchemes() {
         assertThrows(IllegalArgumentException.class,
                 () -> SingBoxProfileParser.parse("https://example.com"));
