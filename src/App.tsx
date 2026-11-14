@@ -328,7 +328,7 @@ export default function App() {
             const server = activeServerRef.current;
             const proxy = activeProxyRef.current;
             const recovered = proxy
-              ? await connectProxyProfile(proxy)
+              ? await connectProxyProfile(proxy, settingsRef.current)
               : await connectWireGuard(server, settingsRef.current);
             if (recovered) {
               if (!settingsRef.current.autoReconnect || !reconnectWantedRef.current
@@ -633,7 +633,7 @@ export default function App() {
       });
       try {
         const connected = activeProxyProfile
-          ? await connectProxyProfile(activeProxyProfile)
+          ? await connectProxyProfile(activeProxyProfile, settings)
           : await connectWireGuard(activeServer, settings);
         if (connected) {
           setConnectionState('connected');
