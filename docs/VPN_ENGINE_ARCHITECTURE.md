@@ -2,128 +2,95 @@
 
 ## Decision
 
-NexaLink will use a **single-active-engine** architecture. WireGuard remains the existing native engine. Sing-box is the preferred next engine for proxy profiles (VLESS, VMess, Trojan and their supported transports). Xray-core remains an optional compatibility engine, not a mandatory dependency in the first integration milestone.
+NexaLink uses a single-active-engine architecture. WireGuard and Sing-box are separate adapters managed by one serialized lifecycle manager. They must never own competing Android VPN interfaces or TUN descriptors concurrently.
 
-This is intentionally not a design that starts two independent VPN engines at once. Android grants one app-owned VPN interface at a time, and competing TUN owners, routes, DNS handlers or foreground services would make connection state and recovery unreliable.
+## Current source implementation
 
-## Current implementation (verified in source)
-
-- Android VPN service: `AlkhalidiVpnService`.
-- Current backend: WireGuard Android `GoBackend`.
+- Android VPN owner: `AlkhalidiVpnService`.
+- Lifecycle coordinator: `VpnEngineManager`.
+- WireGuard adapter: `WireGuardEngine`, backed by the existing WireGuard Android GoBackend.
+- Sing-box adapter: `SingBoxEngine.kt`, backed by the pinned libbox Android binding.
 - Capacitor bridge: `VpnBridgePlugin`.
-- Current connect payload and parser: WireGuard-specific.
-- `ProtocolType` is currently restricted to `WireGuard`, matching the only protocol implemented by the current parser, native bridge and service. VLESS, VMess and Trojan are intentionally not exposed as supported profile types until a real engine adapter is integrated and exercised.
+- Proxy share-link parser: `SingBoxProfileParser`.
+- Shizuku/Shizzi tethering datapath: separate from the app VPN engine; it must not be treated as a second phone VPN owner.
 
-## Lifecycle foundation (WireGuard adapter connected; proxy engines pending)
-
-`VpnEngineManager` provides a platform-neutral, serialized ownership boundary for engine adapters. `AlkhalidiVpnService` now routes WireGuard start/stop through a `WireGuardEngine` adapter backed by the existing `GoBackend`. The manager stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that the requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions, including failed stop and failed rollback cases. The service still has a WireGuard-specific profile parser and backend; this is the first lifecycle integration step, not yet a shared TUN/platform abstraction. No Sing-box or Xray adapter exists.
-
-## Target architecture
+## Runtime flow
 
 ```text
 React / Capacitor UI
         |
-        v
-Typed profile model + protocol parser
-        |
-        v
-VpnEngineManager (one active engine, serialized transitions)
-        |
-        +---- WireGuardEngineAdapter (existing GoBackend)
-        |
-        +---- SingBoxEngineAdapter (planned libbox integration)
-        |
-        +---- XrayEngineAdapter (optional compatibility adapter)
-        |
-        v
-One app-owned Android VpnService / TUN owner
-        |
-        +---- route/DNS/app-exclusion policy
-        |
-        +---- Shizuku / Shizzi tethering datapath
+        +---- WireGuard profile -----------------------------+
+        |                                                     |
+        +---- VLESS / VMess / Trojan share link               |
+                         |                                    |
+                         v                                    v
+                 VpnBridgePlugin                        VpnBridgePlugin
+                         |                                    |
+                         v                                    v
+                WireGuard payload                     SingBoxProfileParser
+                         |                                    |
+                         +----------------+-------------------+
+                                          |
+                                          v
+                                AlkhalidiVpnService
+                                          |
+                                          v
+                                  VpnEngineManager
+                                   /           \
+                                  v             v
+                          WireGuardEngine   SingBoxEngine
+                                  \             /
+                                   \           /
+                                    v         v
+                              One Android VpnService
+                                  and one TUN owner
 ```
 
-The diagram is the target boundary. The WireGuard adapter is now connected to the manager inside the existing Android VPN service; the Sing-box and Xray adapters remain planned.
+## Lifecycle and failure policy
 
-## Engine selection policy
+1. Validate a profile before starting the VPN service.
+2. Request Android VPN permission before starting an engine.
+3. Serialize all engine transitions through `VpnEngineManager`.
+4. Stop the previous engine and confirm it is no longer running before starting the requested engine.
+5. After start, verify the requested adapter reports a running state.
+6. On start failure, attempt to stop the requested engine and release its native resources.
+7. If stop or rollback fails, retain an uncertain owner and block a competing engine. A false claim of a clean disconnect is more dangerous than a visible failure.
+8. Stop callbacks, statistics clients, network callbacks and TUN descriptors during service teardown.
+9. Do not report a connection as established solely because the Capacitor bridge accepted a start request. The UI must use native connection state and surface asynchronous startup failures.
 
-1. A profile is parsed and validated before it reaches the native layer.
-2. The profile protocol selects exactly one adapter.
-3. The manager serializes connect, disconnect and switch operations.
-4. A failed start must close any TUN descriptor, stop the selected engine and publish a failed state.
-5. A server switch must stop the current adapter before starting another.
-6. Engine state is queried from the native service; the UI must not infer a live tunnel from a successful start request alone.
-7. Secrets are passed through private native calls and are never written to diagnostics, logs or crash reports.
+## Sing-box adapter
 
-## Why Sing-box first
+The Sing-box adapter creates a libbox `CommandServer`, starts or reloads the service with a validated config, implements the required `PlatformInterface` callbacks, and creates its TUN through the owning `VpnService.Builder`. It also receives native status counters and monitors the default Android network.
 
-Sing-box offers a unified configuration and routing model for common proxy profiles and also implements a WireGuard outbound. Its Android integration is based on the libbox platform API, which is a more appropriate starting point for a managed Android TUN service than trying to wrap a command-line executable.
+The current adapter intentionally does not claim support for every libbox platform capability. System proxy management, shell/SSH, bridge features, local DNS transport, notification delivery and neighbor monitoring are not fully implemented. Unsupported capabilities must remain unavailable rather than return fake success.
 
-The current WireGuard GoBackend should remain intact during the first Sing-box milestone. This minimizes regression risk and lets us compare the new engine with the known working WireGuard path.
+## WireGuard adapter
 
-## Why keep Xray optional
+WireGuard continues to use the existing GoBackend and profile data path. The shared lifecycle manager provides exclusive ownership and safe switching; it does not replace WireGuard's native backend or its established configuration format.
 
-Xray-core is highly relevant for VLESS/VMess/Trojan compatibility, including deployments using REALITY and XHTTP. It should be added only if a defined profile or transport cannot be handled acceptably by the pinned Sing-box version, or if interoperability tests show a meaningful gap.
+## Shizuku / Shizzi relationship
 
-Running both engines concurrently is out of scope. The manager may choose either adapter for a profile, but only one owns the Android VPN interface at a time.
+Shizuku/Shizzi is used for supported hotspot/tethering operations. It is not the owner of the phone's Android VPN service. Its TestNetworkManager/gVisor datapath is a separate data path and is subject to Android version, OEM implementation, permission and shell identity constraints.
 
-## Integration milestones
+A working phone VPN does not prove tethered-client routing works, and a working Shizzi hotspot session does not prove Sing-box or WireGuard can connect. Test the paths independently and then together.
 
-### M0 — truthful capability model
-- Separate profile protocol from engine identity.
-- Add explicit capabilities and reject unsupported profile types before requesting Android VPN permission.
-- Keep current UI limited to protocols with a real parser and engine.
+## Current limitations
 
-### M1 — Sing-box native proof of concept
-- Pin a reviewed sing-box/libbox release and record its source commit and license.
-- Generate/import the Android libbox binding for the app's supported ABIs.
-- Implement a small adapter that accepts a validated config, starts/stops libbox and receives the Android TUN file descriptor from the app-owned VPN service.
-- Add lifecycle, error, and traffic-stat callbacks.
-- Start with VLESS, VMess and Trojan only after config validation and test fixtures exist. Add REALITY/XHTTP only after explicit compatibility tests.
-
-### M2 — shared VPN lifecycle
-- Extract common permission, foreground notification, TUN ownership, route/DNS, app exclusion and state reporting from the current WireGuard-only service.
-- Keep WireGuard as a separate adapter and verify existing profiles still connect.
-- Ensure a failed proxy-engine start cannot leave a stale TUN or foreground service.
-
-### M3 — Xray compatibility decision
-- Build a compatibility test matrix using real sanitized sample profiles.
-- Add Xray only for verified gaps, using a separately version-pinned native binding and the same single-active-engine contract.
-- Do not ship duplicate engines merely to advertise protocol names.
-
-### M4 — tethering integration
-- Test tethered TCP and UDP through each engine independently.
-- Verify LAN bypass, DNS, IPv4-only networks, IPv6-capable peers, reconnect, and Shizuku session restart.
-- Treat per-client counters as experimental until traffic accounting is reconciled against router-side measurements.
+- Current APK native ABI filter is `arm64-v8a`; other ABIs are not packaged.
+- Protocol URI parsing does not guarantee server interoperability for every transport or extension.
+- Per-client hotspot byte accounting is not yet authoritative on all Android/OEM builds.
+- Device-level TUN, network handover, VPN switching and tethered-client tests remain release gates.
+- Xray is not an active engine in this architecture. Add it only for demonstrated compatibility gaps, using the same single-engine contract.
 
 ## Release gates
 
-No new engine is considered supported until all are true:
-
-- Configuration parser tests cover valid and malformed profile samples.
-- ABI packaging is verified for every advertised device ABI.
-- CI builds the Android APK with the pinned engine artifact.
-- Start/stop/reconnect tests cover permission denial, invalid configuration, process recreation and rapid profile switching.
-- Traffic is confirmed on both the phone and a tethered client.
-- No private key, UUID, password, token or full share URI appears in logs or exported diagnostics.
-- License notices and source-offer obligations are satisfied for every bundled native dependency.
-
-## Current support status
-
-| Capability | Status |
-|---|---|
-| WireGuard native VPN | Implemented through `VpnEngineManager` adapter; requires device validation |
-| Shizuku smart tethering | Implemented; device/OEM dependent |
-| Per-device usage | Experimental; userspace payload counters only |
-| Sing-box Android adapter | Planned; libbox not integrated |
-| VLESS / VMess / Trojan | Not currently supported by the active VPN service |
-| Xray Android adapter | Optional future work |
-| Simultaneous Sing-box + Xray TUN | Not supported by design |
-
-## Sing-box Android integration findings
-
-The official Android client does not consume libbox from a normal Maven coordinate in its Gradle file. Its Android app declares a local `app/libs/libbox.aar`; the corresponding Sing-box source provides `cmd/internal/build_libbox`, which uses gomobile binding to generate the Android AAR from `experimental/libbox`. The libbox platform contract includes `OpenTun`, interface enumeration, network monitoring, DNS transport hooks, and related callbacks. NexaLink therefore needs a real Android `PlatformInterface` adapter that hands the file descriptor from its app-owned `VpnService.Builder.establish()` to libbox, plus a tested lifecycle around `CommandServer`. Copying only the service class from the upstream app would omit essential platform behavior.
-
-The reviewed upstream Sing-box Android application source is GPL-3.0-or-later and its LICENSE also contains an additional condition restricting use of the upstream application's name or implied association in derivative works without prior consent. NexaLink must not copy/rebrand the upstream application or imply endorsement. Before distributing a libbox-based build, pin the exact Sing-box source revision, audit the license and all linked dependencies, include required notices and corresponding source as required, and obtain legal review of the additional license condition. The current NexaLink app has not yet incorporated libbox or upstream Sing-box Android application code.
-
-The current source review is architectural research only; it does not establish a supported protocol or a working Android integration.
+A release may be called production-ready only after:
+- Parser tests and native config validation pass.
+- CI builds and verifies the APK and every advertised ABI.
+- Real endpoint tests cover each advertised protocol/transport.
+- WireGuard/Sing-box switching, cleanup and rollback pass on devices.
+- IPv4, IPv6, DNS, LAN bypass and excluded-app routing are verified.
+- Shizuku permission granted/revoked and tethered TCP/UDP/DNS are verified.
+- Network handover, process death, service recreation and repeated connect/disconnect pass.
+- Diagnostics contain no secrets.
+- License and corresponding-source obligations are met.
