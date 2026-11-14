@@ -153,7 +153,7 @@ internal class SingBoxEngine(
                 val ex6 = options.inet6RouteExcludeAddress
                 while (ex6.hasNext()) {
                     val route = ex6.next()
-                    builder.excludeRoute(android.net.IpPrefix(route.address(), route.prefix()))
+                    builder.excludeRoute(android.net.IpPrefix(java.net.InetAddress.getByName(route.address()), route.prefix()))
                 }
             } else {
                 val v4 = options.inet4RouteRange
