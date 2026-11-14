@@ -22,7 +22,8 @@ class SessionStatusPoller(
                 if (!isConnected()) return@launch
 
                 val outcome = runCatching { controller.status() }
-                if (outcome.isSuccess) onStatus(outcome)
+                onStatus(outcome)
+                if (outcome.isFailure) return@launch
             }
         }
     }
