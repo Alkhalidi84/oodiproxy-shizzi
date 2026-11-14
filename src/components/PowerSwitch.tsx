@@ -13,7 +13,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
   onToggle,
 }) => {
   const isConnected = connectionState === 'connected';
-  const isConnecting = connectionState === 'connecting' || connectionState === 'disconnecting';
+  const isConnecting = connectionState === 'connecting' || connectionState === 'disconnecting' || connectionState === 'reconnecting';
 
   return (
     <div className="relative flex flex-col items-center justify-center my-0 z-20 select-none">
@@ -96,7 +96,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
             }`} 
           />
           <span className="text-sm font-bold tracking-wide text-white">
-            {isConnected ? 'Connected' : isConnecting ? 'Connecting...' : 'Disconnected'}
+            {isConnected ? 'Connected' : connectionState === 'reconnecting' ? 'Reconnecting...' : isConnecting ? 'Connecting...' : 'Disconnected'}
           </span>
         </div>
 
@@ -105,7 +105,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
           {isConnected 
             ? 'Internet is working normally' 
             : isConnecting 
-            ? 'Establishing secure WireGuard tunnel...' 
+            ? (connectionState === 'reconnecting' ? 'Restoring your secure WireGuard tunnel...' : 'Establishing secure WireGuard tunnel...') 
             : 'Tap the button to connect to WireGuard'}
         </p>
       </div>
