@@ -4,12 +4,15 @@ import android.content.ComponentName
 import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.content.pm.PackageManager
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import rikka.shizuku.Shizuku
 
@@ -129,6 +132,7 @@ class TetherClient {
     var onSessionLost: (() -> Unit)? = null
 
     private var deathRecipient: IBinder.DeathRecipient? = null
+    private val bindMutex = Mutex()
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName(BuildConfig.APPLICATION_ID, TetherService::class.java.name),
@@ -158,23 +162,60 @@ class TetherClient {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
+            val hadService = boundService != null
             boundService = null
+            pendingBind?.completeExceptionally(
+                IllegalStateException("Shizuku UserService disconnected before binding completed"),
+            )
+            if (hadService) onSessionLost?.invoke()
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            onServiceDisconnected(name)
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            boundService = null
+            pendingBind?.completeExceptionally(
+                IllegalStateException("Shizuku returned a null UserService binding"),
+            )
         }
     }
 
-    private suspend fun service(): ITetherService {
+    private suspend fun service(): ITetherService = bindMutex.withLock {
         boundService?.let { existing ->
-            if (existing.asBinder().pingBinder()) return existing
+            if (existing.asBinder().pingBinder()) return@withLock existing
             boundService = null
+        }
+
+        check(runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+            "Shizuku is not running. Start Shizuku and retry."
+        }
+        check(runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }
+            .getOrDefault(false)) {
+            "Shizuku permission has not been granted to NexaLink."
+        }
+
+        val serverUid = runCatching { Shizuku.getUid() }.getOrDefault(-1)
+        check(serverUid == 2000 || serverUid == 0) {
+            "Unsupported Shizuku server identity: uid=$serverUid (expected shell 2000 or root 0)."
         }
 
         val deferred = CompletableDeferred<ITetherService>()
         pendingBind = deferred
-        Shizuku.bindUserService(userServiceArgs, connection)
+        try {
+            Shizuku.bindUserService(userServiceArgs, connection)
+        } catch (failure: Throwable) {
+            pendingBind = null
+            throw IllegalStateException(
+                "Shizuku could not start the privileged tethering service: ${failure.message}",
+                failure,
+            )
+        }
 
         val bound = awaitBind(deferred)
         observeDeath(bound)
-        return bound
+        bound
     }
 
     private suspend fun awaitBind(deferred: CompletableDeferred<ITetherService>): ITetherService =
@@ -182,6 +223,7 @@ class TetherClient {
             withTimeout(BIND_TIMEOUT_MS) { deferred.await() }
         } catch (timeout: TimeoutCancellationException) {
             pendingBind = null
+            runCatching { Shizuku.unbindUserService(userServiceArgs, connection, false) }
             throw IllegalStateException(
                 "bindUserService: Shizuku returned no binder for the privileged " +
                     "helper within ${BIND_TIMEOUT_MS}ms. The shell process either " +
@@ -201,10 +243,19 @@ class TetherClient {
         }
 
         runCatching { binder.linkToDeath(recipient, 0) }
-            .onSuccess { deathRecipient = recipient }
-            .onFailure {
-
+            .onSuccess {
+                deathRecipient = recipient
+                if (!binder.pingBinder()) {
+                    boundService = null
+                    throw IllegalStateException("Shizuku UserService died immediately after binding")
+                }
+            }
+            .onFailure { failure ->
                 boundService = null
+                throw IllegalStateException(
+                    "Could not monitor the Shizuku UserService binder lifecycle: ${failure.message}",
+                    failure,
+                )
             }
     }
 
@@ -297,6 +348,9 @@ class TetherClient {
     fun unbindAndStopDaemon() = releaseBinding(shouldTerminate = true)
 
     private fun releaseBinding(shouldTerminate: Boolean) {
+        pendingBind?.cancel()
+        pendingBind = null
+
         deathRecipient?.let { recipient ->
             runCatching { boundService?.asBinder()?.unlinkToDeath(recipient, 0) }
         }
