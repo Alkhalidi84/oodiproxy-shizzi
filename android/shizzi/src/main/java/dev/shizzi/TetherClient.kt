@@ -225,7 +225,23 @@ class TetherClient {
         } finally {
             if (pendingBind === deferred) pendingBind = null
         }
-        observeDeath(bound)
+
+        try {
+            observeDeath(bound)
+            verifyContract(bound)
+        } catch (failure: Throwable) {
+            // Reject and terminate a Binder from a stale UserService before it can
+            // receive any session commands. This is especially important after
+            // updating the app while Shizuku's daemon process remains alive.
+            runCatching {
+                Shizuku.unbindUserService(userServiceArgs, connection, true)
+            }.onFailure(failure::addSuppressed)
+            boundService = null
+            throw IllegalStateException(
+                "Shizuku UserService handshake failed; stale daemon was terminated: ${failure.message}",
+                failure,
+            )
+        }
         bound
     }
 
