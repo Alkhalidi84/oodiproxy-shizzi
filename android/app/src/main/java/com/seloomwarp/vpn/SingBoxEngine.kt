@@ -70,6 +70,7 @@ internal class SingBoxEngine(
             runCatching { commandServer?.close() }
             commandServer = null
             runCatching { tunDescriptor?.close() }
+            tunDescriptor?.let { vpn.onSingBoxTunClosed(it) }
             tunDescriptor = null
             throw IllegalStateException("Unable to start Sing-box: " + failure.message, failure)
         }
@@ -86,6 +87,7 @@ internal class SingBoxEngine(
         runCatching { tunDescriptor?.close() }.onFailure {
             if (failure == null) failure = it else failure?.addSuppressed(it)
         }
+        tunDescriptor?.let { vpn.onSingBoxTunClosed(it) }
         tunDescriptor = null
         failure?.let { throw IllegalStateException("Unable to stop Sing-box cleanly", it) }
     }
