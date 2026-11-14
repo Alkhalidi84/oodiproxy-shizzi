@@ -38,6 +38,18 @@ public class SingBoxProfileParserTest {
                 () -> SingBoxProfileParser.parse("vless://123e4567-e89b-12d3-a456-426614174000@example.com:443?security=reality"));
     }
 
+    @Test public void rejectsMalformedVlessUuid() {
+        assertThrows(IllegalArgumentException.class,
+                () -> SingBoxProfileParser.parse("vless://not-a-uuid@example.com:443?encryption=none"));
+    }
+
+    @Test public void tunMtuUsesMobileSafeDefault() throws Exception {
+        SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(
+                "trojan://secret-pass@example.org:8443?security=tls");
+        JSONObject tun = new JSONObject(profile.configJson).getJSONArray("inbounds").getJSONObject(0);
+        assertEquals(1500, tun.getInt("mtu"));
+    }
+
     @Test public void parsesVlessRealityWebsocketAndBuildsProxyRoute() throws Exception {
         SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(
                 "vless://123e4567-e89b-12d3-a456-426614174000@edge.example.com:443"
