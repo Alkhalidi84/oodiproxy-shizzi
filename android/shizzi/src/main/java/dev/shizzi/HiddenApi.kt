@@ -248,20 +248,68 @@ class TestNetworkApi(private val context: Context) {
     }
 
     fun setupTestNetwork(interfaceName: String, dnsServers: List<InetAddress>, binder: IBinder) {
+        val instance = manager ?: error("setupTestNetwork: test_network service unavailable")
+        val owner = managerClass ?: error("setupTestNetwork: TestNetworkManager class absent")
 
-class TunHandle(private val delegate: Any) {
-
-    val interfaceName: String
-        get() {
-            val method = delegate.javaClass.getMethod("getInterfaceName")
-            return method.invoke(delegate) as String
+        val properties = LinkProperties().apply {
+            setInterfaceName(interfaceName)
+            val addDnsServer = LinkProperties::class.java
+                .getMethod("addDnsServer", InetAddress::class.java)
+            dnsServers.forEach { addDnsServer.invoke(this, it) }
         }
-
-    val fileDescriptor: ParcelFileDescriptor
-        get() {
-            val method = delegate.javaClass.getMethod("getFileDescriptor")
-            return method.invoke(delegate) as ParcelFileDescriptor
+        try {
+            if (setupWithLinkProperties(owner, instance, properties to binder)) return
+            val method = owner.getMethod("setupTestNetwork", String::class.java, IBinder::class.java)
+            method.invoke(instance, interfaceName, binder)
+        } catch (wrapped: java.lang.reflect.InvocationTargetException) {
+            throw IllegalStateException(
+                "setupTestNetwork failed for $interfaceName: " +
+                    "${wrapped.targetException?.javaClass?.simpleName}: " +
+                    "${wrapped.targetException?.message}",
+                wrapped.targetException ?: wrapped,
+            )
         }
+    }
+
+    private fun setupWithLinkProperties(
+        owner: Class<*>,
+        instance: Any,
+        request: Pair<LinkProperties, IBinder>,
+    ): Boolean {
+        val method = runCatching {
+            owner.getMethod(
+                "setupTestNetwork",
+                LinkProperties::class.java,
+                Boolean::class.javaPrimitiveType,
+                IBinder::class.java,
+            )
+        }.getOrNull() ?: return false
+        return try {
+            method.invoke(instance, request.first, true, request.second)
+            true
+        } catch (wrapped: java.lang.reflect.InvocationTargetException) {
+            throw IllegalStateException(
+                "setupTestNetwork(LinkProperties) failed: " +
+                    "${wrapped.targetException?.javaClass?.simpleName}: " +
+                    "${wrapped.targetException?.message}",
+                wrapped.targetException ?: wrapped,
+            )
+        }
+    }
+
+    fun teardownTestNetwork(network: Network) {
+        val instance = manager ?: return
+        val owner = managerClass ?: return
+        val method = owner.getMethod("teardownTestNetwork", Network::class.java)
+        try {
+            method.invoke(instance, network)
+        } catch (wrapped: java.lang.reflect.InvocationTargetException) {
+            throw IllegalStateException(
+                "teardownTestNetwork failed: ${wrapped.targetException?.message}",
+                wrapped.targetException ?: wrapped,
+            )
+        }
+    }
 }
 
 class TetheringPreferenceApi(private val context: Context) {
