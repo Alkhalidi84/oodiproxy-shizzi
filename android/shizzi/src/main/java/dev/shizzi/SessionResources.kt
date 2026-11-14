@@ -73,24 +73,47 @@ class SessionResources(
             "startDatapath: datapath is already attached"
         }
 
+        require(mtu in MIN_MTU..MAX_MTU) {
+            "startDatapath: invalid MTU $mtu (expected $MIN_MTU..$MAX_MTU)"
+        }
+        check(descriptor.fileDescriptor.valid()) {
+            "startDatapath: framework TUN descriptor is already closed (fd=${descriptor.fd})"
+        }
+        val originalFd = descriptor.fd
         val nativeDescriptor = try {
             ParcelFileDescriptor.dup(descriptor.fileDescriptor)
         } catch (failure: Throwable) {
             throw IllegalStateException(
-                "startDatapath: could not duplicate TUN fd ${descriptor.fd}: " +
+                "startDatapath: could not duplicate framework TUN fd $originalFd: " +
                     describeFailure(failure),
                 failure,
             )
         }
 
         try {
-            datapathSession = Datapath.start(nativeDescriptor.fd.toLong(), mtu.toLong())
+            check(nativeDescriptor.fileDescriptor.valid()) {
+                "duplicated TUN descriptor is invalid (fd=${nativeDescriptor.fd})"
+            }
+            val nativeFd = nativeDescriptor.fd
+            // Go's fdbased endpoint reads raw IP packets. A TestNetworkManager
+            // TUN can be different from an ordinary VpnService TUN; capture all
+            // native diagnostics before releasing this duplicate.
+            val started = try {
+                Datapath.start(nativeFd.toLong(), mtu.toLong())
+            } catch (failure: Throwable) {
+                throw IllegalStateException(
+                    "gVisor fdbased attach failed (errno/native cause): ${describeFailure(failure)}",
+                    failure,
+                )
+            }
             datapathFileDescriptor = nativeDescriptor
+            datapathSession = started
         } catch (failure: Throwable) {
-            runCatching { nativeDescriptor.close() }
+            val closeFailure = runCatching { nativeDescriptor.close() }.exceptionOrNull()
+            if (closeFailure != null) failure.addSuppressed(closeFailure)
             throw IllegalStateException(
-                "startDatapath: userspace stack failed to attach to duplicated fd " +
-                    "${nativeDescriptor.fd} (original fd=${descriptor.fd}, mtu=$mtu): " +
+                "startDatapath failed: original fd=$originalFd, duplicate fd=${nativeDescriptor.fd}, " +
+                    "mtu=$mtu, originalValid=${descriptor.fileDescriptor.valid()}: " +
                     describeFailure(failure),
                 failure,
             )
@@ -173,5 +196,7 @@ class SessionResources(
 
     private companion object {
         const val POLL_INTERVAL_MS = 200L
+        const val MIN_MTU = 576
+        const val MAX_MTU = 9000
     }
 }
