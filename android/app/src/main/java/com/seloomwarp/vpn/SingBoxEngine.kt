@@ -28,6 +28,9 @@ internal class SingBoxEngine(
     @Volatile private var running = false
     private var commandServer: CommandServer? = null
     private var tunDescriptor: ParcelFileDescriptor? = null
+    @Volatile private var statsClient: CommandClient? = null
+    private val statsExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    @Volatile private var statsClientStopped = false
     private val connectivity = vpn.getSystemService(ConnectivityManager::class.java)
     private val interfaceMonitors = java.util.concurrent.ConcurrentHashMap<InterfaceUpdateListener, ConnectivityManager.NetworkCallback>()
 
@@ -64,9 +67,11 @@ internal class SingBoxEngine(
             server.startOrReloadService(config, OverrideOptions())
             check(tunDescriptor != null) { "Sing-box did not establish the Android TUN interface" }
             running = true
+            startStatsClient()
             Log.i(TAG, "Sing-box started: " + displayName)
         } catch (failure: Throwable) {
             running = false
+            stopStatsClient()
             runCatching { commandServer?.closeService() }
             runCatching { commandServer?.close() }
             commandServer = null
@@ -79,6 +84,7 @@ internal class SingBoxEngine(
 
     override fun stop() {
         running = false
+        stopStatsClient()
         var failure: Throwable? = null
         runCatching { commandServer?.closeService() }.onFailure { failure = it }
         runCatching { commandServer?.close() }.onFailure {
@@ -91,6 +97,60 @@ internal class SingBoxEngine(
         tunDescriptor?.let { vpn.onSingBoxTunClosed(it) }
         tunDescriptor = null
         failure?.let { throw IllegalStateException("Unable to stop Sing-box cleanly", it) }
+    }
+
+    private val statsHandler = object : CommandClientHandler {
+        override fun connected() {
+            Log.i(TAG, "Sing-box status client connected")
+        }
+        override fun disconnected(message: String?) {
+            if (!statsClientStopped && !message.isNullOrBlank()) {
+                Log.w(TAG, "Sing-box status client disconnected: " + message)
+            }
+        }
+        override fun setDefaultLogLevel(level: Int) { }
+        override fun clearLogs() { }
+        override fun writeLogs(messageList: LogIterator?) { }
+        override fun writeStatus(message: StatusMessage) {
+            if (!statsClientStopped) {
+                vpn.onSingBoxTrafficStats(
+                    message.uplinkTotal,
+                    message.downlinkTotal,
+                    message.trafficAvailable,
+                )
+            }
+        }
+        override fun writeGroups(message: OutboundGroupIterator?) { }
+        override fun writeOutbounds(message: OutboundGroupItemIterator?) { }
+        override fun initializeClashMode(modeList: StringIterator, currentMode: String) { }
+        override fun updateClashMode(newMode: String) { }
+        override fun writeConnectionEvents(events: ConnectionEvents?) { }
+    }
+
+    private fun startStatsClient() {
+        statsClientStopped = false
+        statsExecutor.execute {
+            if (statsClientStopped || !running) return@execute
+            try {
+                val options = CommandClientOptions().apply {
+                    addCommand(Libbox.CommandStatus)
+                    statusInterval = 1_000_000_000L
+                }
+                val client = CommandClient(statsHandler, options)
+                statsClient = client
+                client.connect()
+            } catch (error: Exception) {
+                if (!statsClientStopped) Log.w(TAG, "Unable to subscribe to Sing-box traffic statistics", error)
+            }
+        }
+    }
+
+    private fun stopStatsClient() {
+        statsClientStopped = true
+        val client = statsClient
+        statsClient = null
+        runCatching { client?.disconnect() }
+        runCatching { statsExecutor.shutdownNow() }
     }
 
     // CommandServerHandler
