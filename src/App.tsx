@@ -305,6 +305,7 @@ export default function App() {
 
   // Restore only a tunnel the user previously asked to keep active.
   useEffect(() => {
+    if (!serversStorageReady || !proxyProfilesStorageReady) return;
     if (!settings.autoReconnect) {
       if (connectionStateRef.current === 'reconnecting') setConnectionState('disconnected');
       return;
@@ -367,7 +368,7 @@ export default function App() {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [settings.autoReconnect, activeServerId]);
+  }, [settings.autoReconnect, activeServerId, serversStorageReady, proxyProfilesStorageReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -666,6 +667,7 @@ export default function App() {
 
   // Handle Power button toggle with Real Android VPN Service
   const handleToggleConnection = async () => {
+    if (!serversStorageReady || !proxyProfilesStorageReady) return;
     if (connectionState === 'connected' || connectionState === 'reconnecting') {
       reconnectWantedRef.current = false;
       try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
