@@ -140,7 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="h-4 w-4 accent-cyan-500"
               />
             </label>
-            <p className="text-[10px] leading-relaxed text-slate-500">When enabled, NexaLink will restore a tunnel you previously connected if the native VPN unexpectedly drops. Retries are limited; manual disconnect disables recovery.</p>
+            <p className="text-[10px] leading-relaxed text-slate-500">When enabled, NexaLink checks for an unexpected tunnel drop while the app is running and retries a previous connection a limited number of times. Reopening the app can also resume a saved connection intent. Manual disconnect disables recovery.</p>
           </div>
 
           <div className="space-y-2 border-t border-slate-800/80 pt-3">
