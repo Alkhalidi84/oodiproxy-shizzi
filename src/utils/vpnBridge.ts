@@ -27,7 +27,16 @@ export interface VpnTrafficStats {
   latestHandshakeEpochMs: number;
 }
 
+export interface ParsedProxyProfile {
+  protocol: 'vless' | 'vmess' | 'trojan';
+  name: string;
+  server: string;
+  port: number;
+  configJson: string;
+}
+
 export interface VpnBridgePlugin {
+  parseProxyProfile(options: { link: string }): Promise<ParsedProxyProfile>;
   isVpnConnected(): Promise<{ connected: boolean }>;
   getTrafficStats(): Promise<VpnTrafficStats>;
   listApplications(): Promise<{ applications: InstalledApp[] }>;
