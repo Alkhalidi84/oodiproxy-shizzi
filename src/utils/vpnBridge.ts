@@ -41,7 +41,8 @@ const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
     isVpnConnected: async () => ({ connected: false }),
     getTrafficStats: async () => ({ connected: false, downloadBytes: 0, uploadBytes: 0, latestHandshakeEpochMs: 0 }),
     listApplications: async () => ({ applications: [] }),
-    connect: async () => ({ status: 'connected' }),
+    // Browser preview has no Android VpnService. Never report a fake connection.
+    connect: async () => { throw new Error('VPN connections are available in the NexaLink Android app.'); },
     disconnect: async () => ({ status: 'disconnected' }),
     openVpnSettings: async () => undefined,
   },
