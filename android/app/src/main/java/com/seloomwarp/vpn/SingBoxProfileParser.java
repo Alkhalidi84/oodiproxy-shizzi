@@ -72,7 +72,8 @@ public final class SingBoxProfileParser {
         outbound.put("server_port", port);
         if ("vless".equals(scheme)) {
             outbound.put("uuid", user);
-            outbound.put("flow", value(query, "flow", ""));
+            String flow = value(query, "flow", "");
+            if (!flow.isEmpty()) outbound.put("flow", flow);
             outbound.put("packet_encoding", "xudp");
             if (!"none".equalsIgnoreCase(value(query, "encryption", "none"))) {
                 throw new IllegalArgumentException("VLESS encryption must be none");
@@ -90,8 +91,13 @@ public final class SingBoxProfileParser {
         final String decoded;
         try {
             decoded = new String(Base64.decode(payload, Base64.DEFAULT), StandardCharsets.UTF_8);
-        } catch (RuntimeException error) {
-            throw new IllegalArgumentException("Invalid VMess base64 payload", error);
+        } catch (RuntimeException standardError) {
+            try {
+                decoded = new String(Base64.decode(payload, Base64.URL_SAFE | Base64.NO_WRAP), StandardCharsets.UTF_8);
+            } catch (RuntimeException urlSafeError) {
+                urlSafeError.addSuppressed(standardError);
+                throw new IllegalArgumentException("Invalid VMess base64 payload", urlSafeError);
+            }
         }
         JSONObject source;
         try {
