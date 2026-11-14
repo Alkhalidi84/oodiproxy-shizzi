@@ -29,6 +29,7 @@ internal class SingBoxEngine(
     private var commandServer: CommandServer? = null
     private var tunDescriptor: ParcelFileDescriptor? = null
     private val connectivity = vpn.getSystemService(ConnectivityManager::class.java)
+    private val interfaceMonitors = java.util.concurrent.ConcurrentHashMap<InterfaceUpdateListener, ConnectivityManager.NetworkCallback>()
 
     override fun id(): String = "sing-box"
     override fun isRunning(): Boolean = running
@@ -93,7 +94,7 @@ internal class SingBoxEngine(
     }
 
     // CommandServerHandler
-    override fun serviceStop() { running = false }
+    override fun serviceStop() { running = false; vpn.onSingBoxEngineStopped() }
     override fun serviceReload() { }
     override fun getSystemProxyStatus(): SystemProxyStatus = SystemProxyStatus().apply {
         available = false
@@ -217,9 +218,31 @@ internal class SingBoxEngine(
     }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
-        reportDefaultInterface(listener, connectivity.activeNetwork)
+        if (interfaceMonitors.containsKey(listener)) return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                reportDefaultInterface(listener, connectivity.activeNetwork ?: network)
+            }
+            override fun onLost(network: Network) {
+                reportDefaultInterface(listener, connectivity.activeNetwork)
+            }
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: android.net.LinkProperties) {
+                reportDefaultInterface(listener, connectivity.activeNetwork ?: network)
+            }
+        }
+        try {
+            connectivity.registerDefaultNetworkCallback(callback)
+            interfaceMonitors[listener] = callback
+            reportDefaultInterface(listener, connectivity.activeNetwork)
+        } catch (error: Exception) {
+            Log.w(TAG, "Unable to monitor the default network", error)
+        }
     }
-    override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) { }
+
+    override fun closeDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {
+        val callback = interfaceMonitors.remove(listener) ?: return
+        runCatching { connectivity.unregisterNetworkCallback(callback) }
+    }
 
     private fun reportDefaultInterface(listener: InterfaceUpdateListener, network: Network?) {
         if (network == null) return
@@ -288,10 +311,12 @@ internal class SingBoxEngine(
     override fun usePlatformBridge(): Boolean = false
     override fun createBridge(options: BridgeOptions?): BridgeSession = error("Platform bridge is not supported")
 
-    private class StringArray(private val iterator: Iterator<String>) : StringIterator {
-        override fun len(): Int = 0
-        override fun hasNext(): Boolean = iterator.hasNext()
-        override fun next(): String = iterator.next()
+    private class StringArray(iterator: Iterator<String>) : StringIterator {
+        private val values = iterator.asSequence().toList()
+        private var index = 0
+        override fun len(): Int = values.size
+        override fun hasNext(): Boolean = index < values.size
+        override fun next(): String = values[index++]
     }
     private class InterfaceArray(
         private val iterator: Iterator<io.nekohasekai.libbox.NetworkInterface>,
