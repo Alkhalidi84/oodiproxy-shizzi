@@ -8,7 +8,7 @@ This is intentionally not a design that starts two independent VPN engines at on
 
 ## Current implementation (verified in source)
 
-- Android VPN service: `SeloomVpnService`.
+- Android VPN service: `AlkhalidiVpnService`.
 - Current backend: WireGuard Android `GoBackend`.
 - Capacitor bridge: `VpnBridgePlugin`.
 - Current connect payload and parser: WireGuard-specific.
@@ -16,7 +16,7 @@ This is intentionally not a design that starts two independent VPN engines at on
 
 ## Lifecycle foundation (WireGuard adapter connected; proxy engines pending)
 
-`VpnEngineManager` provides a platform-neutral, serialized ownership boundary for engine adapters. `SeloomVpnService` now routes WireGuard start/stop through a `WireGuardEngine` adapter backed by the existing `GoBackend`. The manager stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that the requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions, including failed stop and failed rollback cases. The service still has a WireGuard-specific profile parser and backend; this is the first lifecycle integration step, not yet a shared TUN/platform abstraction. No Sing-box or Xray adapter exists.
+`VpnEngineManager` provides a platform-neutral, serialized ownership boundary for engine adapters. `AlkhalidiVpnService` now routes WireGuard start/stop through a `WireGuardEngine` adapter backed by the existing `GoBackend`. The manager stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that the requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions, including failed stop and failed rollback cases. The service still has a WireGuard-specific profile parser and backend; this is the first lifecycle integration step, not yet a shared TUN/platform abstraction. No Sing-box or Xray adapter exists.
 
 ## Target architecture
 
