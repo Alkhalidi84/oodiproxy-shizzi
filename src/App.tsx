@@ -1031,8 +1031,8 @@ export default function App() {
         isOpen={isDiagnosticsOpen}
         onClose={() => setIsDiagnosticsOpen(false)}
         connectionState={connectionState}
-        activeServerName={activeServer.name}
-        endpoint={activeServer.endpoint}
+        activeServerName={activeProxyProfile?.name || activeServer.name}
+        endpoint={activeProxyProfile ? `${activeProxyProfile.server}:${activeProxyProfile.port}` : activeServer.endpoint}
         serverCount={servers.length}
         telemetry={telemetry}
         mtu={settings.mtu}
