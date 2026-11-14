@@ -234,12 +234,21 @@ class TetherClient {
             withTimeout(BIND_TIMEOUT_MS) { deferred.await() }
         } catch (timeout: TimeoutCancellationException) {
             pendingBind = null
-            runCatching { Shizuku.unbindUserService(userServiceArgs, connection, false) }
+            boundService = null
+
+            // UserServiceArgs uses daemon(true) and a stable process name. A timed-out
+            // old shell process may remain alive after an APK update and keep serving
+            // the old Binder contract. Terminate that daemon before reporting failure;
+            // the next explicit Start can then bind a fresh instance from this APK.
+            runCatching {
+                Shizuku.unbindUserService(userServiceArgs, connection, true)
+            }.onFailure { cleanup ->
+                timeout.addSuppressed(cleanup)
+            }
             throw IllegalStateException(
-                "bindUserService: Shizuku returned no binder for the privileged " +
-                    "helper within ${BIND_TIMEOUT_MS}ms. The shell process either " +
-                    "never started or exited before handing one back; " +
-                    "`adb logcat -s ShizukuServiceStarter:*` carries the reason.",
+                "bindUserService: no Binder from Shizuku within ${BIND_TIMEOUT_MS}ms. " +
+                    "The stale UserService daemon was asked to terminate. " +
+                    "`adb logcat -s ShizukuServiceStarter:*` carries the process startup reason.",
                 timeout,
             )
         }
