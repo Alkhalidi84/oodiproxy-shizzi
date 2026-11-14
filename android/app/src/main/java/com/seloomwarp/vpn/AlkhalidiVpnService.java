@@ -284,7 +284,8 @@ public class AlkhalidiVpnService extends VpnService {
         }
         return root.toString();
     }
-\n    private void stopVpn() {
+
+    private void stopVpn() {
         try {
             engineManager.stop();
             stopVpnAfterEngineStopped();
