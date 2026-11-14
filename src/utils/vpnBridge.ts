@@ -43,6 +43,8 @@ export interface VpnBridgePlugin {
   listApplications(): Promise<{ applications: InstalledApp[] }>;
   connect(options: VpnConnectOptions): Promise<{ status: string }>;
   connectProxy(options: { link: string; bypassLanRoute?: boolean; excludedApplications?: string[] }): Promise<{ status: string }>;
+  loadSecureProxyProfiles(): Promise<{ profilesJson: string }>;
+  saveSecureProxyProfiles(options: { profilesJson: string }): Promise<void>;
   disconnect(): Promise<{ status: string }>;
   openVpnSettings(): Promise<void>;
 }
@@ -56,6 +58,8 @@ const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
     // Browser preview has no Android VpnService. Never report a fake connection.
     connect: async () => { throw new Error('VPN connections are available in the NexaLink Android app.'); },
     connectProxy: async () => { throw new Error('Proxy connections are available in the NexaLink Android app.'); },
+    loadSecureProxyProfiles: async () => ({ profilesJson: localStorage.getItem('nexalink_proxy_profiles_v1') || '' }),
+    saveSecureProxyProfiles: async ({ profilesJson }) => { localStorage.setItem('nexalink_proxy_profiles_v1', profilesJson); },
     disconnect: async () => ({ status: 'disconnected' }),
     openVpnSettings: async () => undefined,
   },
