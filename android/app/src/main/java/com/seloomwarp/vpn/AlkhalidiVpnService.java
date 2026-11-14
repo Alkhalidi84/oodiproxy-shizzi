@@ -24,6 +24,8 @@ import java.util.concurrent.Executors;
 public class AlkhalidiVpnService extends VpnService {
     public static final String ACTION_CONNECT = "com.seloomwarp.vpn.CONNECT";
     public static final String ACTION_DISCONNECT = "com.seloomwarp.vpn.DISCONNECT";
+    public static final String ACTION_CONNECT_SINGBOX = "com.seloomwarp.vpn.CONNECT_SINGBOX";
+    public static final String EXTRA_CONFIG_JSON = "singbox_config_json";
     public static final String EXTRA_SERVER_NAME = "server_name";
     public static final String EXTRA_ENDPOINT = "endpoint";
     public static final String EXTRA_DNS = "dns";
@@ -47,6 +49,16 @@ public class AlkhalidiVpnService extends VpnService {
     private volatile boolean foregroundStarted;
     private Backend backend;
     private Tunnel tunnel;
+    private volatile android.os.ParcelFileDescriptor singBoxTunDescriptor;
+
+    /** Called by SingBoxEngine when libbox asks Android to establish its TUN. */
+    public void onSingBoxTunEstablished(android.os.ParcelFileDescriptor descriptor) {
+        singBoxTunDescriptor = descriptor;
+    }
+
+    public void onSingBoxTunClosed(android.os.ParcelFileDescriptor descriptor) {
+        if (singBoxTunDescriptor == descriptor) singBoxTunDescriptor = null;
+    }
 
     public static boolean isConnected() { return isRunning; }
 
@@ -91,7 +103,7 @@ public class AlkhalidiVpnService extends VpnService {
             submitSafely(this::stopVpn);
             return START_NOT_STICKY;
         }
-        if (!ACTION_CONNECT.equals(intent.getAction())) return START_NOT_STICKY;
+        if (!ACTION_CONNECT.equals(intent.getAction()) && !ACTION_CONNECT_SINGBOX.equals(intent.getAction())) return START_NOT_STICKY;
 
         try {
             createNotificationChannel();
@@ -118,12 +130,20 @@ public class AlkhalidiVpnService extends VpnService {
 
     private void startVpn(Intent intent) {
         try {
-            engineManager.start(new WireGuardEngine(intent));
-        } catch (Exception error) {
-            synchronized (tunnelLock) {
-                isRunning = isWireGuardTunnelRunningLocked();
+            VpnEngineManager.Engine requested;
+            if (ACTION_CONNECT_SINGBOX.equals(intent.getAction())) {
+                String config = required(intent, EXTRA_CONFIG_JSON);
+                String name = intent.getStringExtra(EXTRA_SERVER_NAME);
+                requested = new SingBoxEngine(this, config, name == null ? "NexaLink" : name);
+            } else {
+                requested = new WireGuardEngine(intent);
             }
+            engineManager.start(requested);
+            isRunning = requested.isRunning();
+        } catch (Exception error) {
+            isRunning = engineManager.activeEngineId() != null;
             if (!isRunning) stopVpnAfterEngineStopped();
+            android.util.Log.e("NexaLinkVPN", "VPN engine start failed", error);
         }
     }
 
@@ -186,6 +206,7 @@ public class AlkhalidiVpnService extends VpnService {
 
     private void stopVpnAfterEngineStopped() {
         isRunning = false;
+        singBoxTunDescriptor = null;
         if (foregroundStarted) {
             try { stopForeground(true); } catch (Throwable ignored) {}
             foregroundStarted = false;
@@ -283,12 +304,20 @@ public class AlkhalidiVpnService extends VpnService {
         return result.substring(0, Math.min(15, result.length()));
     }
 
+    @Override public void onRevoke() {
+        submitSafely(this::stopVpn);
+        super.onRevoke();
+    }
+
     @Override public void onDestroy() {
         destroyed = true;
         try { engineManager.stop(); } catch (Exception ignored) {}
         try { if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null); }
         catch (Throwable ignored) {}
         tunnel = null;
+        android.os.ParcelFileDescriptor singBoxTun = singBoxTunDescriptor;
+        singBoxTunDescriptor = null;
+        if (singBoxTun != null) try { singBoxTun.close(); } catch (Exception ignored) {}
         isRunning = false;
         if (foregroundStarted) {
             try { stopForeground(true); } catch (Throwable ignored) {}
