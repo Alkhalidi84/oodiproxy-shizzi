@@ -166,7 +166,8 @@ public class AlkhalidiVpnService extends VpnService {
                 config = applySingBoxVpnPolicy(
                         config,
                         intent.getBooleanExtra(EXTRA_BYPASS_LAN, false),
-                        cleanPackageList(intent.getStringExtra(EXTRA_EXCLUDED_APPLICATIONS)));
+                        cleanPackageList(intent.getStringExtra(EXTRA_EXCLUDED_APPLICATIONS)),
+                        getLocalNetworkCidrs());
                 requested = new SingBoxEngine(this, config, name == null ? "NexaLink" : name);
             } else {
                 requested = new WireGuardEngine(intent);
@@ -198,7 +199,7 @@ public class AlkhalidiVpnService extends VpnService {
                 if (!isEndpoint(endpoint)) throw new IllegalArgumentException("Invalid VPN endpoint");
                 // Split only address-family defaults that the peer actually routes.
                 // IPv4-only peers must not acquire synthetic IPv6 routes.
-                allowedIPs = VpnRoutePolicy.applyLanBypass(allowedIPs, bypassLan);
+                allowedIPs = VpnRoutePolicy.applyLanBypass(allowedIPs, bypassLan, getLocalNetworkCidrs());
 
                 String tunnelName = safeTunnelName(intent.getStringExtra(EXTRA_SERVER_NAME));
                 String excludedLine = excludedApplications.isEmpty() ? "" : "ExcludedApplications = " + excludedApplications + "\n";
@@ -228,8 +229,30 @@ public class AlkhalidiVpnService extends VpnService {
 
 
     /** Applies Android VPN policy to the Sing-box TUN inbound before libbox starts. */
+    /** Collect connected non-VPN interface prefixes so remote private networks remain routable. */
+    private java.util.List<String> getLocalNetworkCidrs() {
+        java.util.LinkedHashSet<String> routes = new java.util.LinkedHashSet<>();
+        android.net.ConnectivityManager manager = getSystemService(android.net.ConnectivityManager.class);
+        if (manager == null) return new java.util.ArrayList<>();
+        for (android.net.Network network : manager.getAllNetworks()) {
+            android.net.NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+            if (capabilities == null || capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) continue;
+            android.net.LinkProperties properties = manager.getLinkProperties(network);
+            if (properties == null) continue;
+            for (android.net.LinkAddress linkAddress : properties.getLinkAddresses()) {
+                java.net.InetAddress address = linkAddress.getAddress();
+                if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isMulticastAddress()) continue;
+                String host = address.getHostAddress();
+                int zone = host.indexOf("%");
+                if (zone >= 0) host = host.substring(0, zone);
+                routes.add(host + "/" + linkAddress.getPrefixLength());
+            }
+        }
+        return new java.util.ArrayList<>(routes);
+    }
     private static String applySingBoxVpnPolicy(String config, boolean bypassLan,
-                                                String excludedApplications) throws Exception {
+                                                String excludedApplications,
+                                                java.util.List<String> localNetworks) throws Exception {
         org.json.JSONObject root = new org.json.JSONObject(config);
         org.json.JSONArray inbounds = root.optJSONArray("inbounds");
         if (inbounds == null || inbounds.length() == 0) {
@@ -245,13 +268,8 @@ public class AlkhalidiVpnService extends VpnService {
         }
         if (tun == null) throw new IllegalArgumentException("Sing-box config has no TUN inbound");
         if (bypassLan) {
-            org.json.JSONArray excluded = new org.json.JSONArray()
-                    .put("10.0.0.0/8")
-                    .put("172.16.0.0/12")
-                    .put("192.168.0.0/16")
-                    .put("169.254.0.0/16")
-                    .put("fc00::/7")
-                    .put("fe80::/10");
+            org.json.JSONArray excluded = new org.json.JSONArray();
+            for (String route : VpnRoutePolicy.lanExclusionCidrs(localNetworks)) excluded.put(route);
             tun.put("route_exclude_address", excluded);
         }
         if (excludedApplications != null && !excludedApplications.trim().isEmpty()) {
