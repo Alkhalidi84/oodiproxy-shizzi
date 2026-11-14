@@ -14,6 +14,7 @@ public class VpnEngineManagerTest {
         boolean running;
         boolean failStart;
         boolean failStop;
+        boolean remainRunningOnStop;
         int starts;
         int stops;
 
@@ -27,7 +28,7 @@ public class VpnEngineManagerTest {
         @Override public void stop() {
             stops++;
             if (failStop) throw new IllegalStateException("stop failed");
-            running = false;
+            if (!remainRunningOnStop) running = false;
         }
         @Override public boolean isRunning() { return running; }
     }
@@ -63,6 +64,17 @@ public class VpnEngineManagerTest {
         assertEquals("wireguard", manager.activeEngineId());
     }
 
+    @Test public void stopThatLeavesOldEngineRunningPreventsSwitch() throws Exception {
+        VpnEngineManager manager = new VpnEngineManager();
+        FakeEngine wireGuard = new FakeEngine("wireguard");
+        FakeEngine singBox = new FakeEngine("sing-box");
+        manager.start(wireGuard);
+        wireGuard.remainRunningOnStop = true;
+        assertThrows(IllegalStateException.class, () -> manager.start(singBox));
+        assertEquals(0, singBox.starts);
+        assertEquals("wireguard", manager.activeEngineId());
+    }
+
     @Test public void failedStartRollsBackRequestedEngine() {
         VpnEngineManager manager = new VpnEngineManager();
         FakeEngine singBox = new FakeEngine("sing-box");
@@ -70,6 +82,18 @@ public class VpnEngineManagerTest {
         assertThrows(IllegalStateException.class, () -> manager.start(singBox));
         assertFalse(singBox.running);
         assertNull(manager.activeEngineId());
+    }
+
+    @Test public void failedRollbackRetainsOwnershipAndBlocksAnotherEngine() {
+        VpnEngineManager manager = new VpnEngineManager();
+        FakeEngine singBox = new FakeEngine("sing-box");
+        FakeEngine wireGuard = new FakeEngine("wireguard");
+        singBox.failStart = true;
+        singBox.failStop = true;
+        assertThrows(IllegalStateException.class, () -> manager.start(singBox));
+        assertEquals("sing-box", manager.activeEngineId());
+        assertThrows(IllegalStateException.class, () -> manager.start(wireGuard));
+        assertEquals(0, wireGuard.starts);
     }
 
     @Test public void repeatedStartOfActiveEngineDoesNotRestartIt() throws Exception {
