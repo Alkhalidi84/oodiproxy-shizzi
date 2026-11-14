@@ -20,6 +20,7 @@ import java.util.Map;
  */
 public final class SingBoxProfileParser {
     private SingBoxProfileParser() {}
+    private static final int MAX_LINK_LENGTH = 16 * 1024;
 
     public static final class Profile {
         public final String protocol;
@@ -42,6 +43,9 @@ public final class SingBoxProfileParser {
             throw new IllegalArgumentException("A proxy link is required");
         }
         String input = shareLink.trim();
+        if (input.length() > MAX_LINK_LENGTH) {
+            throw new IllegalArgumentException("Proxy link exceeds the 16 KB size limit");
+        }
         if (input.regionMatches(true, 0, "vmess://", 0, 8)) {
             return parseVmess(input.substring(8));
         }
