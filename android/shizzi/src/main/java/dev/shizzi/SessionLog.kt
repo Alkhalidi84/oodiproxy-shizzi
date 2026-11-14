@@ -60,13 +60,9 @@ object SessionLog {
         runCatching {
             val stamp = TIMESTAMP.format(Date())
             val file = File(writePath)
-            val isNew = !file.exists()
-
             file.appendText("$stamp ${level.name.padEnd(5)} $safeMessage\n")
 
-            // Keep app-internal diagnostics private; never grant world-readable access.
-            if (isNew) file.setReadable(false, false)
-
+            // Keep the file under the app-private files directory and preserve its default permissions.
             truncateIfLarge(writePath)
         }.onFailure { failure ->
             Log.w(TAG, "append failed: ${failure.message}")
