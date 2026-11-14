@@ -96,6 +96,89 @@ jobs:
           jar tf /tmp/libbox-classes.jar | grep -Fxq 'io/nekohasekai/libbox/CommandServer.class'
           sha256sum "$GITHUB_WORKSPACE/android/app/libs/libbox.aar"
 
+      # Both gomobile AARs carry a copy of the global go.Seq runtime.
+      # Keep the libbox copy only after proving every duplicated class exposes
+      # the same public JVM ABI; retain Shizzi's own generated datapath classes.
+      - name: Share the verified gomobile Go runtime
+        run: |
+          python3 - <<'PY'
+          import io
+          import os
+          import subprocess
+          import tempfile
+          import zipfile
+
+          datapath_aar = "android/shizzi/libs/datapath.aar"
+          libbox_aar = "android/app/libs/libbox.aar"
+
+          def classes_jar(path):
+              with zipfile.ZipFile(path) as aar:
+                  return aar.read("classes.jar")
+
+          with tempfile.TemporaryDirectory() as tmp:
+              jars = []
+              for label, aar_path in (("datapath", datapath_aar), ("libbox", libbox_aar)):
+                  jar_path = os.path.join(tmp, label + ".jar")
+                  with open(jar_path, "wb") as out:
+                      out.write(classes_jar(aar_path))
+                  jars.append(jar_path)
+
+              def class_names(jar_path):
+                  with zipfile.ZipFile(jar_path) as jar:
+                      return {n for n in jar.namelist()
+                              if n.startswith("go/") and n.endswith(".class")}
+
+              datapath_classes = class_names(jars[0])
+              libbox_classes = class_names(jars[1])
+              duplicates = sorted(datapath_classes & libbox_classes)
+              if not duplicates:
+                  raise SystemExit("Expected shared gomobile go.* classes were not found")
+
+              def public_abi(jar_path, class_file):
+                  name = class_file[:-6].replace("/", ".")
+                  result = subprocess.run(
+                      ["javap", "-classpath", jar_path, "-public", "-s", name],
+                      check=True, text=True, capture_output=True
+                  )
+                  # Ignore compiler/source metadata; compare public members and JVM descriptors.
+                  return "\n".join(result.stdout.splitlines()[1:]).strip()
+
+              for class_file in duplicates:
+                  left = public_abi(jars[0], class_file)
+                  right = public_abi(jars[1], class_file)
+                  if left != right:
+                      raise SystemExit(
+                          "Incompatible gomobile runtime ABI for " + class_file +
+                          "\n--- datapath ---\n" + left +
+                          "\n--- libbox ---\n" + right
+                      )
+
+              rebuilt_classes = io.BytesIO()
+              with zipfile.ZipFile(jars[0]) as source, zipfile.ZipFile(
+                  rebuilt_classes, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for item in source.infolist():
+                      if item.filename.startswith("go/") and item.filename.endswith(".class"):
+                          continue
+                      target.writestr(item, source.read(item.filename))
+
+              replacement = io.BytesIO()
+              with zipfile.ZipFile(datapath_aar) as source, zipfile.ZipFile(
+                  replacement, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for item in source.infolist():
+                      data = rebuilt_classes.getvalue() if item.filename == "classes.jar" else source.read(item.filename)
+                      target.writestr(item, data)
+
+              with open(datapath_aar, "wb") as out:
+                  out.write(replacement.getvalue())
+
+              remaining = class_names(jars[0]) - set(duplicates)
+              if remaining:
+                  raise SystemExit("Unexpected duplicate runtime classes remain: " + ", ".join(sorted(remaining)))
+              print("Verified and shared", len(duplicates), "gomobile runtime classes")
+          PY
+
       - name: Restore Java 21 for Android Gradle
         uses: actions/setup-java@v4
         with:
