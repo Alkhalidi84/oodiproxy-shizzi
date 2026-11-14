@@ -55,9 +55,15 @@ func Start(tunFD int, mtu int) (*Session, error) {
 		},
 	})
 
+	// TestNetworkManager.createTunInterface returns a Linux TUN fd, not
+	// an AF_PACKET socket. Tell fdbased explicitly so it does not probe the
+	// descriptor with socket-specific discovery before attaching the endpoint.
 	endpoint, err := fdbased.New(&fdbased.Options{
-		FDs: []int{tunFD},
-		MTU: uint32(mtu),
+		FDs:             []int{tunFD},
+		MTU:             uint32(mtu),
+		EthernetHeader:  false,
+		IsPacketSocket:  []bool{false},
+		PacketDispatchMode: fdbased.Readv,
 	})
 	if err != nil {
 		netStack.Close()
