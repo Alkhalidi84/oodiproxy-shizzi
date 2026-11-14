@@ -1,7 +1,7 @@
 # NexaLink
 
 <p align="center">
-  <strong>WireGuard VPN & Smart Tethering for Android</strong><br />
+  <strong>WireGuard · Sing-box VPN & Smart Tethering for Android</strong><br />
   <sub>Secure connectivity, Shizuku-powered hotspot sharing, and network visibility in one app.</sub>
 </p>
 
@@ -13,7 +13,7 @@
 
 ## Overview
 
-**NexaLink** is an Android networking application built with React, TypeScript, Capacitor, native Android services, and WireGuard. It combines native VPN connectivity with Shizuku-powered hotspot sharing, allowing tethered devices to use a selected upstream network without requiring root access on supported devices.
+**NexaLink** is an Android networking application built with React, TypeScript, Capacitor, native Android services, WireGuard, and Sing-box. It combines native VPN connectivity with Shizuku-powered hotspot sharing, allowing tethered devices to use a selected upstream network without requiring root access on supported devices.
 
 The application interface is English-first and uses a left-to-right layout.
 
@@ -25,7 +25,14 @@ The application interface is English-first and uses a left-to-right layout.
 - Import configurations using a `wireguard://` URI or a `.conf` file.
 - Export profiles as a WireGuard configuration file or QR code.
 - Configure DNS, MTU, Persistent Keepalive, Allowed IPs, and LAN route handling.
-- Display live tunnel traffic counters, transfer rates, session duration, and latency.
+- Display native tunnel traffic counters and transfer rates when available, session duration, and latency.
+
+### Sing-box proxy profiles
+- Import and save VLESS, VMess, and Trojan share links from the English interface.
+- Validate links natively before saving; supported transports include TCP, WebSocket, gRPC, HTTP/H2, TLS, and VLESS REALITY where represented by the share link.
+- Run Sing-box through the same Android VPN service and TUN ownership manager as WireGuard; the engines are mutually exclusive.
+- Read cumulative upload/download counters from the Sing-box native status stream when the engine reports traffic availability.
+- Proxy profiles are stored separately from WireGuard peers. The app stores the original share URI in local app storage; treat imported links as credentials and do not share them publicly.
 
 ### Smart tethering with Shizuku
 - Integrated Shizzi Android module.
