@@ -228,7 +228,6 @@ public class AlkhalidiVpnService extends VpnService {
         }
 
 
-    /** Applies Android VPN policy to the Sing-box TUN inbound before libbox starts. */
     /** Collect connected non-VPN interface prefixes so remote private networks remain routable. */
     private java.util.List<String> getLocalNetworkCidrs() {
         java.util.LinkedHashSet<String> routes = new java.util.LinkedHashSet<>();
@@ -250,6 +249,7 @@ public class AlkhalidiVpnService extends VpnService {
         }
         return new java.util.ArrayList<>(routes);
     }
+    /** Applies Android VPN policy to the Sing-box TUN inbound before libbox starts. */
     private static String applySingBoxVpnPolicy(String config, boolean bypassLan,
                                                 String excludedApplications,
                                                 java.util.List<String> localNetworks) throws Exception {
