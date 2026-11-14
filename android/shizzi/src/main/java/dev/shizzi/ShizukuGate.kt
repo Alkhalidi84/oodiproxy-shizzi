@@ -33,7 +33,7 @@ object ShizukuGate {
     }
 
     private fun isBinderLive(): Boolean {
-        if (Shizuku.pingBinder()) return true
+        if (runCatching { Shizuku.pingBinder() }.getOrDefault(false)) return true
         return runCatching { Shizuku.getUid() }.isSuccess
     }
 
