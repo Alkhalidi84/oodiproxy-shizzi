@@ -12,7 +12,7 @@ This is intentionally not a design that starts two independent VPN engines at on
 - Current backend: WireGuard Android `GoBackend`.
 - Capacitor bridge: `VpnBridgePlugin`.
 - Current connect payload and parser: WireGuard-specific.
-- `ProtocolType` currently lists VLESS, VMess and Trojan, but the current parser, native bridge and service do not implement those protocols. These values must not be treated as working support until an engine adapter is integrated and exercised.
+- `ProtocolType` is currently restricted to `WireGuard`, matching the only protocol implemented by the current parser, native bridge and service. VLESS, VMess and Trojan are intentionally not exposed as supported profile types until a real engine adapter is integrated and exercised.
 
 ## Target architecture
 
