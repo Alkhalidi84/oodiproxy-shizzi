@@ -144,13 +144,13 @@ jobs:
                   return "\n".join(result.stdout.splitlines()[1:]).strip()
 
               for class_file in duplicates:
-                  left = public_abi(jars[0], class_file)
-                  right = public_abi(jars[1], class_file)
-                  if left != right:
+                  left = set(public_abi(jars[0], class_file).splitlines())
+                  right = set(public_abi(jars[1], class_file).splitlines())
+                  missing = sorted(left - right)
+                  if missing:
                       raise SystemExit(
-                          "Incompatible gomobile runtime ABI for " + class_file +
-                          "\n--- datapath ---\n" + left +
-                          "\n--- libbox ---\n" + right
+                          "libbox gomobile runtime is not a compatible superset for " + class_file +
+                          "\\nMissing from libbox: " + "\\n".join(missing)
                       )
 
               rebuilt_classes = io.BytesIO()
