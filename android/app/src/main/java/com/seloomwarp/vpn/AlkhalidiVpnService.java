@@ -60,6 +60,11 @@ public class AlkhalidiVpnService extends VpnService {
         if (singBoxTunDescriptor == descriptor) singBoxTunDescriptor = null;
     }
 
+    /** Keep the public VPN state in sync if libbox stops itself or its command service. */
+    public void onSingBoxEngineStopped() {
+        isRunning = false;
+    }
+
     public static boolean isConnected() { return isRunning; }
 
     /**
