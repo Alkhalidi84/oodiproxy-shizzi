@@ -227,6 +227,10 @@ export default function App() {
 
   // Active server object
   const activeServer = servers.find((s) => s.id === activeServerId) || servers[0];
+  const activeServerRef = useRef(activeServer);
+  activeServerRef.current = activeServer;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   // Probe native VPN state after the first paint so the interface opens immediately.
   useEffect(() => {
@@ -273,9 +277,10 @@ export default function App() {
           await delay(wait);
           if (disposed || !reconnectWantedRef.current) return;
           try {
-            const recovered = await connectWireGuard(activeServer, settings);
+            const server = activeServerRef.current;
+            const recovered = await connectWireGuard(server, settingsRef.current);
             if (recovered) {
-              if (!reconnectWantedRef.current) {
+              if (!settingsRef.current.autoReconnect || !reconnectWantedRef.current || activeServerRef.current.id !== server.id) {
                 await VpnBridge.disconnect().catch(() => undefined);
                 setConnectionState('disconnected');
                 return;
@@ -301,12 +306,11 @@ export default function App() {
     };
 
     const timer = window.setInterval(() => { void monitor(); }, 5000);
-    void monitor();
     return () => {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [settings, activeServerId]);
+  }, [settings.autoReconnect, activeServerId]);
 
   useEffect(() => {
     let cancelled = false;
