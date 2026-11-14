@@ -42,7 +42,7 @@ export interface VpnBridgePlugin {
   getTrafficStats(): Promise<VpnTrafficStats>;
   listApplications(): Promise<{ applications: InstalledApp[] }>;
   connect(options: VpnConnectOptions): Promise<{ status: string }>;
-  connectProxy(options: { link: string }): Promise<{ status: string }>;
+  connectProxy(options: { link: string; bypassLanRoute?: boolean; excludedApplications?: string[] }): Promise<{ status: string }>;
   disconnect(): Promise<{ status: string }>;
   openVpnSettings(): Promise<void>;
 }
