@@ -51,9 +51,9 @@ class HotspotClientManager(private val context: Context) {
             val row = clients.optJSONObject(index) ?: continue
             val ip = row.optString("ipAddress").takeIf { it.isNotBlank() && it != "null" } ?: continue
             val mac = row.optString("macAddress").lowercase(Locale.ROOT)
-            val usage = byIp[ip]
-            val currentRx = usage?.optLong("downloadBytes") ?: 0L
-            val currentTx = usage?.optLong("uploadBytes") ?: 0L
+            val usage = byIp[ip] ?: continue
+            val currentRx = usage.optLong("downloadBytes").coerceAtLeast(0L)
+            val currentTx = usage.optLong("uploadBytes").coerceAtLeast(0L)
             val stored = runCatching {
                 JSONObject(usagePreferences.getString(mac, "{}").orEmpty())
             }.getOrDefault(JSONObject())
@@ -61,10 +61,13 @@ class HotspotClientManager(private val context: Context) {
                 stored.optString("ipAddress") == ip
             val previousRx = stored.optLong("lastRxBytes", 0L)
             val previousTx = stored.optLong("lastTxBytes", 0L)
-            val totalRx = stored.optLong("totalRxBytes", 0L) +
-                if (sameSessionAndIp && currentRx >= previousRx) currentRx - previousRx else 0L
-            val totalTx = stored.optLong("totalTxBytes", 0L) +
-                if (sameSessionAndIp && currentTx >= previousTx) currentTx - previousTx else 0L
+            // On the first observation of a session/IP pair, include the current
+            // session counter instead of silently losing traffic transferred before
+            // the first UI poll. Subsequent observations add only the delta.
+            val rxDelta = if (sameSessionAndIp && currentRx >= previousRx) currentRx - previousRx else currentRx
+            val txDelta = if (sameSessionAndIp && currentTx >= previousTx) currentTx - previousTx else currentTx
+            val totalRx = stored.optLong("totalRxBytes", 0L).coerceAtLeast(0L) + rxDelta
+            val totalTx = stored.optLong("totalTxBytes", 0L).coerceAtLeast(0L) + txDelta
             usagePreferences.edit().putString(mac, JSONObject().apply {
                 put("sessionId", sessionId)
                 put("ipAddress", ip)
