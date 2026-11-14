@@ -34,9 +34,9 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         onClick={onToggle}
         disabled={isConnecting}
         id="btn-vpn-power-toggle"
-        aria-label={isConnected ? "Disconnect" : "Connect to Server"}
+        aria-label={isConnected || isReconnecting ? "Disconnect" : "Connect to Server"}
         className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center transition-transform active:scale-95 group focus:outline-none ${
-          isConnecting ? 'cursor-wait' : 'cursor-pointer'
+          isConnecting || isReconnecting ? 'cursor-wait' : 'cursor-pointer'
         }`}
       >
         {/* Animated Gradient Border Ring */}
@@ -105,8 +105,10 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         <p className="text-[11px] text-slate-300 font-medium tracking-tight text-center">
           {isConnected 
             ? 'Internet is working normally' 
-            : isConnecting 
-            ? (isReconnecting ? 'Restoring your secure WireGuard tunnel...' : 'Establishing secure WireGuard tunnel...') 
+            : isReconnecting
+            ? 'Restoring your secure WireGuard tunnel...'
+            : isConnecting
+            ? 'Establishing secure WireGuard tunnel...'
             : 'Tap the button to connect to WireGuard'}
         </p>
       </div>
