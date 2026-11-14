@@ -5,41 +5,46 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
+import java.util.Arrays;
 
 public class VpnRoutePolicyTest {
     @Test
-    public void ipv4DefaultExcludesPrivateAndLinkLocalNetworks() {
-        String routes = VpnRoutePolicy.applyLanBypass("0.0.0.0/0", true);
-        assertFalse(contains(routes, "10.1.2.3"));
-        assertFalse(contains(routes, "172.20.1.2"));
-        assertFalse(contains(routes, "192.168.1.1"));
+    public void ipv4DefaultExcludesOnlyActualLocalSubnetAndLinkLocal() {
+        String routes = VpnRoutePolicy.applyLanBypass("0.0.0.0/0", true,
+                Arrays.asList("192.168.1.0/24", "10.0.0.0/24"));
+        assertFalse(contains(routes, "192.168.1.10"));
+        assertFalse(contains(routes, "10.0.0.10"));
         assertFalse(contains(routes, "169.254.10.1"));
+        assertTrue(contains(routes, "10.20.1.2"));
+        assertTrue(contains(routes, "172.20.1.2"));
         assertTrue(contains(routes, "8.8.8.8"));
-        assertTrue(contains(routes, "100.64.1.1"));
     }
 
     @Test
-    public void ipv6DefaultExcludesUlaAndLinkLocalButPreservesGlobal() {
-        String routes = VpnRoutePolicy.applyLanBypass("::/0", true);
-        assertFalse(contains(routes, "fc00::1"));
-        assertFalse(contains(routes, "fd12:3456::1"));
+    public void ipv6DefaultExcludesActualLocalPrefixAndLinkLocal() {
+        String routes = VpnRoutePolicy.applyLanBypass("::/0", true,
+                Arrays.asList("fd12:3456:789a::/64"));
+        assertFalse(contains(routes, "fd12:3456:789a::1234"));
         assertFalse(contains(routes, "fe80::1234"));
+        assertTrue(contains(routes, "fc00::1234"));
         assertTrue(contains(routes, "2001:4860:4860::8888"));
     }
 
     @Test
     public void onlyExplicitlyPresentAddressFamiliesAreChanged() {
-        String routes = VpnRoutePolicy.applyLanBypass("0.0.0.0/0", true);
+        String routes = VpnRoutePolicy.applyLanBypass("0.0.0.0/0", true,
+                Arrays.asList("192.168.1.0/24"));
         assertFalse(routes.contains(":"));
         assertTrue(contains(routes, "1.1.1.1"));
     }
 
     @Test
-    public void nonDefaultRoutesArePreserved() {
-        assertEquals("2001:db8::/32",
-                VpnRoutePolicy.applyLanBypass("10.0.0.0/8,2001:db8::/32", true));
-        assertEquals("203.0.113.0/24",
-                VpnRoutePolicy.applyLanBypass("203.0.113.0/24", true));
+    public void nonDefaultRoutesAreSubtractedOnlyWhereTheyOverlapLocalNetworks() {
+        String routes = VpnRoutePolicy.applyLanBypass("10.0.0.0/8,2001:db8::/32", true,
+                Arrays.asList("10.10.0.0/16"));
+        assertFalse(contains(routes, "10.10.1.1"));
+        assertTrue(contains(routes, "10.11.1.1"));
+        assertTrue(contains(routes, "2001:db8::1"));
     }
 
     @Test
