@@ -955,19 +955,42 @@ export default function App() {
           selectedEngine={selectedEngine}
           disabled={connectionState === 'connecting' || connectionState === 'disconnecting' || connectionState === 'reconnecting'}
           onSelectEngine={(engine) => {
-            if (engine === selectedEngine) return;
+            if (engine === selectedEngine || connectionStateRef.current === 'connecting'
+                || connectionStateRef.current === 'disconnecting' || connectionStateRef.current === 'reconnecting') return;
+            const previousEngine = selectedEngineRef.current;
             reconnectWantedRef.current = false;
             try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
-            selectedEngineRef.current = engine;
-            setSelectedEngine(engine);
-            try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, engine); } catch { /* storage may be unavailable */ }
-            if (connectionStateRef.current !== 'disconnected') {
-              setConnectionState('disconnecting');
-              void VpnBridge.disconnect().catch((error) => console.warn('Engine switch disconnect failed:', error)).finally(() => {
-                setConnectionState('disconnected');
-              });
+            const applyEngine = () => {
+              selectedEngineRef.current = engine;
+              setSelectedEngine(engine);
+              try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, engine); } catch { /* storage may be unavailable */ }
+              if (engine === 'sing-box' && !activeProxyRef.current) setIsProxyProfilesOpen(true);
+            };
+            if (connectionStateRef.current === 'disconnected') {
+              applyEngine();
+              return;
             }
-            if (engine === 'sing-box' && !activeProxyRef.current) setIsProxyProfilesOpen(true);
+            setConnectionState('disconnecting');
+            void (async () => {
+              try {
+                await VpnBridge.disconnect();
+                let stopped = false;
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                  await delay(250);
+                  if (!(await VpnBridge.isVpnConnected()).connected) { stopped = true; break; }
+                }
+                if (!stopped) throw new Error('The current VPN engine did not stop; keeping the previous engine selected.');
+                saveConnectionLog(telemetryRef.current);
+                setConnectionState('disconnected');
+                applyEngine();
+              } catch (error) {
+                console.error('Safe VPN engine switch failed:', error);
+                selectedEngineRef.current = previousEngine;
+                setSelectedEngine(previousEngine);
+                try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, previousEngine); } catch { /* storage may be unavailable */ }
+                setConnectionState('connected');
+              }
+            })();
           }}
         />
 
