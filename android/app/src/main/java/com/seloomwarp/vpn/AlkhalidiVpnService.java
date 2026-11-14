@@ -279,7 +279,7 @@ public class AlkhalidiVpnService extends VpnService {
     private static int validMtu(int value) { return value >= 1280 && value <= 65535 ? value : 1280; }
     private static String safeTunnelName(String name) {
         String result = name == null ? "NexaLink" : name.replaceAll("[^a-zA-Z0-9_=+.-]", "-");
-        if (result.isEmpty()) result = "SeloomWarp";
+        if (result.isEmpty()) result = "NexaLink";
         return result.substring(0, Math.min(15, result.length()));
     }
 
