@@ -1,6 +1,7 @@
 const ITERATIONS = 310_000;
 const FORMAT = 'nexalink-encrypted-backup';
 const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
+const MAX_BACKUP_PLAINTEXT_BYTES = 3_500_000;
 
 function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
@@ -46,6 +47,9 @@ export async function encryptBackup(payload: unknown, password: string): Promise
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  if (plaintext.byteLength > MAX_BACKUP_PLAINTEXT_BYTES) {
+    throw new Error('The backup contents are too large to export (maximum 3.5 MB before encryption).');
+  }
   const ciphertext = await globalThis.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: asArrayBuffer(iv) },
     key,
