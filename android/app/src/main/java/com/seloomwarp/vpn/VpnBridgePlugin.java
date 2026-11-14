@@ -154,7 +154,7 @@ public class VpnBridgePlugin extends Plugin {
             call.reject("Unable to decrypt saved WireGuard servers: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
         }
     }
-    private SecretKey getOrCreateProfileKey() throws Exception {
+    private synchronized SecretKey getOrCreateProfileKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
         java.security.Key existing = keyStore.getKey(KEYSTORE_ALIAS, null);
