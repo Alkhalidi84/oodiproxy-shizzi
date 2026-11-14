@@ -106,10 +106,10 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
           {isConnected 
             ? 'Internet is working normally' 
             : isReconnecting
-            ? 'Restoring your secure WireGuard tunnel...'
+            ? 'Restoring your secure VPN connection...'
             : isConnecting
-            ? 'Establishing secure WireGuard tunnel...'
-            : 'Tap the button to connect to WireGuard'}
+            ? 'Establishing secure VPN connection...'
+            : 'Tap the button to connect using the selected VPN engine'}
         </p>
       </div>
     </div>
