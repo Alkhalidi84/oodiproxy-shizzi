@@ -1,5 +1,6 @@
 const ITERATIONS = 310_000;
 const FORMAT = 'nexalink-encrypted-backup';
+const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 
 function asArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = new Uint8Array(bytes.byteLength);
@@ -14,6 +15,9 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 function fromBase64(value: string): Uint8Array {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
+    throw new Error('The backup file contains invalid encoded data.');
+  }
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
@@ -38,11 +42,15 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
 export async function encryptBackup(payload: unknown, password: string): Promise<Blob> {
   if (password.length < 10) throw new Error('Use a backup password with at least 10 characters.');
   if (!globalThis.crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
-  const salt = globalThis.globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const salt = globalThis.crypto.getRandomValues(new Uint8Array(16));
   const iv = globalThis.crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await globalThis.crypto.subtle.encrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(plaintext));
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: asArrayBuffer(iv) },
+    key,
+    asArrayBuffer(plaintext),
+  );
   const envelope = {
     format: FORMAT,
     version: 1,
@@ -57,8 +65,15 @@ export async function encryptBackup(payload: unknown, password: string): Promise
 }
 
 export async function decryptBackup(file: File, password: string): Promise<unknown> {
+  if (file.size > MAX_BACKUP_BYTES) throw new Error('Backup files must be 5 MB or smaller.');
   if (!globalThis.crypto?.subtle) throw new Error('Secure encryption is unavailable in this browser.');
-  const envelope = JSON.parse(await file.text()) as Record<string, unknown>;
+  if (password.length < 10) throw new Error('Use the password that was created for this backup.');
+  let envelope: Record<string, unknown>;
+  try {
+    envelope = JSON.parse(await file.text()) as Record<string, unknown>;
+  } catch {
+    throw new Error('The backup file is not valid JSON.');
+  }
   if (envelope.format !== FORMAT || envelope.version !== 1 ||
       envelope.kdf !== 'PBKDF2-SHA256' || envelope.cipher !== 'AES-256-GCM' ||
       envelope.iterations !== ITERATIONS) {
@@ -73,9 +88,17 @@ export async function decryptBackup(file: File, password: string): Promise<unkno
   const key = await deriveKey(password, salt);
   let plaintext: ArrayBuffer;
   try {
-    plaintext = await globalThis.crypto.subtle.decrypt({ name: 'AES-GCM', iv: asArrayBuffer(iv) }, key, asArrayBuffer(ciphertext));
+    plaintext = await globalThis.crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: asArrayBuffer(iv) },
+      key,
+      asArrayBuffer(ciphertext),
+    );
   } catch {
     throw new Error('The password is incorrect or the backup was modified.');
   }
-  return JSON.parse(new TextDecoder().decode(plaintext));
+  try {
+    return JSON.parse(new TextDecoder().decode(plaintext));
+  } catch {
+    throw new Error('The decrypted backup payload is invalid.');
+  }
 }
