@@ -278,7 +278,7 @@ public class AlkhalidiVpnService extends VpnService {
     }
     private static int validMtu(int value) { return value >= 1280 && value <= 65535 ? value : 1280; }
     private static String safeTunnelName(String name) {
-        String result = name == null ? "SeloomWarp" : name.replaceAll("[^a-zA-Z0-9_=+.-]", "-");
+        String result = name == null ? "NexaLink" : name.replaceAll("[^a-zA-Z0-9_=+.-]", "-");
         if (result.isEmpty()) result = "SeloomWarp";
         return result.substring(0, Math.min(15, result.length()));
     }
@@ -307,7 +307,7 @@ public class AlkhalidiVpnService extends VpnService {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "حالة اتصال SeloomWarp VPN", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "NexaLink VPN status", NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -316,8 +316,8 @@ public class AlkhalidiVpnService extends VpnService {
         Intent launch = new Intent(this, MainActivity.class);
         PendingIntent pending = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("SeloomWarp VPN")
-            .setContentText("جاري الاتصال عبر " + (serverName == null ? "WireGuard" : serverName))
+            .setContentTitle("NexaLink VPN")
+            .setContentText("Connecting through " + (serverName == null ? "WireGuard" : serverName))
             .setSmallIcon(android.R.drawable.ic_lock_lock).setContentIntent(pending).setOngoing(true).setPriority(NotificationCompat.PRIORITY_LOW).build();
     }
     private final class WireGuardEngine implements VpnEngineManager.Engine {
