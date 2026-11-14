@@ -21,7 +21,7 @@ export interface WireguardServer {
   createdAt: number;
 }
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'reconnecting';
 
 export interface AppSettings {
   dpiBypass: boolean;
