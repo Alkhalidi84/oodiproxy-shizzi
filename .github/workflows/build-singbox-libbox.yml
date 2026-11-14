@@ -1,0 +1,77 @@
+name: Build Sing-box libbox (ARM64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexalink-singbox-libbox
+  cancel-in-progress: true
+
+jobs:
+  build-libbox:
+    name: Build libbox AAR from pinned Sing-box v1.14.4
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pinned Sing-box source
+        uses: actions/checkout@v4
+        with:
+          repository: SagerNet/sing-box
+          ref: v1.14.4
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android NDK
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Build libbox and legacy AARs
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          test -s libbox.aar
+          test -s libbox-legacy.aar
+          mkdir -p dist/arm64
+          cp libbox.aar libbox-legacy.aar dist/arm64/
+          sha256sum dist/arm64/*.aar > dist/arm64/SHA256SUMS
+          unzip -l dist/arm64/libbox.aar | head -40
+
+      - name: Record upstream pin and build toolchain
+        run: |
+          {
+            echo "Sing-box source: SagerNet/sing-box v1.14.4"
+            echo "Go: 1.26.10"
+            echo "Java: 17"
+            echo "Android NDK: r28"
+            echo "Target ABI: arm64-v8a"
+            echo "Built artifacts: libbox.aar, libbox-legacy.aar"
+          } > dist/arm64/BUILD-INFO.txt
+
+      - name: Upload libbox AARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexalink-singbox-libbox-v1.14.4-arm64
+          path: dist/arm64/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
