@@ -14,6 +14,10 @@ This is intentionally not a design that starts two independent VPN engines at on
 - Current connect payload and parser: WireGuard-specific.
 - `ProtocolType` is currently restricted to `WireGuard`, matching the only protocol implemented by the current parser, native bridge and service. VLESS, VMess and Trojan are intentionally not exposed as supported profile types until a real engine adapter is integrated and exercised.
 
+## Lifecycle foundation (implemented, not yet wired into the service)
+
+`VpnEngineManager` now provides a platform-neutral, serialized ownership boundary for engine adapters. It stops the previous owner before starting another, refuses a switch if stopping the previous owner fails, verifies that a requested engine reports running, and attempts rollback when startup fails. JVM unit tests cover these transitions. The current `SeloomVpnService` still calls WireGuard `GoBackend` directly; the manager is not yet connected to that service, and no Sing-box adapter exists. This is a tested-design foundation only, not a completed engine migration.
+
 ## Target architecture
 
 ```text
