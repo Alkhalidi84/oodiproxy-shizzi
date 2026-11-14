@@ -36,8 +36,10 @@ public class VpnRoutePolicyTest {
 
     @Test
     public void nonDefaultRoutesArePreserved() {
-        assertEquals("10.0.0.0/8,2001:db8::/32",
+        assertEquals("2001:db8::/32",
                 VpnRoutePolicy.applyLanBypass("10.0.0.0/8,2001:db8::/32", true));
+        assertEquals("203.0.113.0/24",
+                VpnRoutePolicy.applyLanBypass("203.0.113.0/24", true));
     }
 
     @Test
