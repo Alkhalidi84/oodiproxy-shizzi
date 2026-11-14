@@ -189,7 +189,11 @@ public final class SingBoxProfileParser {
         JSONObject config = new JSONObject()
                 .put("log", new JSONObject().put("level", "info"))
                 .put("dns", dns)
-                .put("inbounds", new JSONArray())
+                .put("inbounds", new JSONArray().put(new JSONObject()
+                        .put("type", "tun").put("tag", "tun-in")
+                        .put("address", new JSONArray().put("172.19.0.1/30").put("fdfe:dcba:9876::1/126"))
+                        .put("mtu", 9000).put("auto_route", true).put("strict_route", true)
+                        .put("stack", "system")) )
                 .put("outbounds", outbounds)
                 .put("route", route);
         return new Profile(protocol, name, host, port, config.toString());
