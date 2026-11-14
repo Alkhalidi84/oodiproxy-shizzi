@@ -11,6 +11,14 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.util.Base64;
+import android.content.SharedPreferences;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import java.security.KeyStore;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -52,6 +60,68 @@ public class VpnBridgePlugin extends Plugin {
         }
     }
 
+    private static final String SECURE_PROFILE_PREFS = "nexalink_secure_profiles";
+    private static final String SECURE_PROFILE_KEY = "encrypted_profiles";
+    private static final String KEYSTORE_ALIAS = "NexaLinkProxyProfilesV1";
+
+    /** Stores imported proxy links encrypted with an Android Keystore AES-GCM key. */
+    @PluginMethod
+    public void saveSecureProxyProfiles(PluginCall call) {
+        try {
+            String json = call.getString("profilesJson", "[]");
+            if (json == null || json.length() > 2_000_000) throw new IllegalArgumentException("Proxy profile data is too large");
+            new org.json.JSONArray(json);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateProfileKey());
+            byte[] encrypted = cipher.doFinal(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            byte[] payload = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, payload, 0, iv.length);
+            System.arraycopy(encrypted, 0, payload, iv.length, encrypted.length);
+            boolean saved = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE)
+                    .edit().putString(SECURE_PROFILE_KEY, Base64.encodeToString(payload, Base64.NO_WRAP)).commit();
+            if (!saved) throw new IllegalStateException("Unable to persist encrypted proxy profiles");
+            call.resolve();
+        } catch (Throwable error) {
+            call.reject("Unable to securely save proxy profiles: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    /** Loads encrypted proxy links; plaintext is returned only to the in-memory app bridge. */
+    @PluginMethod
+    public void loadSecureProxyProfiles(PluginCall call) {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE);
+            String encoded = prefs.getString(SECURE_PROFILE_KEY, null);
+            JSObject result = new JSObject();
+            if (encoded == null || encoded.isEmpty()) { result.put("profilesJson", ""); call.resolve(result); return; }
+            byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
+            if (payload.length <= 28) throw new IllegalStateException("Encrypted profile data is truncated");
+            byte[] iv = java.util.Arrays.copyOfRange(payload, 0, 12);
+            byte[] encrypted = java.util.Arrays.copyOfRange(payload, 12, payload.length);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateProfileKey(), new GCMParameterSpec(128, iv));
+            String json = new String(cipher.doFinal(encrypted), java.nio.charset.StandardCharsets.UTF_8);
+            new org.json.JSONArray(json);
+            result.put("profilesJson", json);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to decrypt saved proxy profiles: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    private SecretKey getOrCreateProfileKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        java.security.Key existing = keyStore.getKey(KEYSTORE_ALIAS, null);
+        if (existing instanceof SecretKey) return (SecretKey) existing;
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        generator.init(new KeyGenParameterSpec.Builder(KEYSTORE_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true).build());
+        return generator.generateKey();
+    }
     @PluginMethod
     public void isVpnConnected(PluginCall call) {
         JSObject result = new JSObject();
