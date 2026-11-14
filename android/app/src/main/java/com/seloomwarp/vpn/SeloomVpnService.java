@@ -172,7 +172,6 @@ public class SeloomVpnService extends VpnService {
                 if (!isRunning) throw new IllegalStateException("WireGuard backend did not enter UP state");
             }
         }
-    }
 
     private void stopVpn() {
         try {
