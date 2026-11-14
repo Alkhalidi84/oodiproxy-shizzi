@@ -56,6 +56,11 @@ class TetherSession(private val context: Context) {
     }
 
     private fun bringUp(): String {
+        // Tethering must prefer TRANSPORT_TEST before the test network is created
+        // and before downstream tethering is restarted. Applying this after the
+        // gVisor endpoint starts can leave the TestNetwork TUN unprepared.
+        preferTestNetworks()
+
         val group = SessionResources(testNetworkApi, context.connectivityManager())
         resources = group
 
@@ -67,7 +72,6 @@ class TetherSession(private val context: Context) {
         SessionLog.info("datapath attached to $name")
         followVpn(group)
 
-        preferTestNetworks()
         restartDownstream()
 
         verifyUpstream(name)
