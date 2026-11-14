@@ -28,9 +28,9 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({
           <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center shrink-0">
             <ShieldCheck className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="flex flex-col text-right leading-tight">
+          <div className="flex flex-col text-left leading-tight">
             <span className="text-xs font-bold text-white tracking-wide">DPI Bypass</span>
-            <span className="text-[10px] text-slate-400 truncate">تجاوز فحص الشبكة</span>
+            <span className="text-[10px] text-slate-400 truncate">Bypass Network Checks</span>
           </div>
         </div>
 
@@ -60,9 +60,9 @@ export const ToggleRow: React.FC<ToggleRowProps> = ({
           <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center shrink-0">
             <Zap className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="flex flex-col text-right leading-tight">
+          <div className="flex flex-col text-left leading-tight">
             <span className="text-xs font-bold text-white tracking-wide">Auto Reconnect</span>
-            <span className="text-[10px] text-slate-400 truncate">إعادة الاتصال</span>
+            <span className="text-[10px] text-slate-400 truncate">Auto Reconnect</span>
           </div>
         </div>
 

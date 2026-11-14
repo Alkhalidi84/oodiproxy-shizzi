@@ -21,9 +21,11 @@ import java.io.StringReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class SeloomVpnService extends VpnService {
+public class AlkhalidiVpnService extends VpnService {
     public static final String ACTION_CONNECT = "com.seloomwarp.vpn.CONNECT";
     public static final String ACTION_DISCONNECT = "com.seloomwarp.vpn.DISCONNECT";
+    public static final String ACTION_CONNECT_SINGBOX = "com.seloomwarp.vpn.CONNECT_SINGBOX";
+    public static final String EXTRA_CONFIG_JSON = "singbox_config_json";
     public static final String EXTRA_SERVER_NAME = "server_name";
     public static final String EXTRA_ENDPOINT = "endpoint";
     public static final String EXTRA_DNS = "dns";
@@ -39,24 +41,58 @@ public class SeloomVpnService extends VpnService {
     private static final String CHANNEL_ID = "seloom_vpn_status_channel";
     private static final int NOTIFICATION_ID = 1001;
     private static volatile boolean isRunning = false;
-    private static volatile SeloomVpnService activeService;
+    private static volatile AlkhalidiVpnService activeService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Object tunnelLock = new Object();
+    private final VpnEngineManager engineManager = new VpnEngineManager();
     private volatile boolean destroyed;
     private volatile boolean foregroundStarted;
     private Backend backend;
     private Tunnel tunnel;
+    private volatile android.os.ParcelFileDescriptor singBoxTunDescriptor;
+    private volatile long singBoxUploadBytes;
+    private volatile long singBoxDownloadBytes;
+    private volatile boolean singBoxTrafficAvailable;
+
+    /** Called by SingBoxEngine when libbox asks Android to establish its TUN. */
+    public void onSingBoxTunEstablished(android.os.ParcelFileDescriptor descriptor) {
+        singBoxTunDescriptor = descriptor;
+        singBoxUploadBytes = 0L;
+        singBoxDownloadBytes = 0L;
+        singBoxTrafficAvailable = false;
+    }
+
+    public void onSingBoxTunClosed(android.os.ParcelFileDescriptor descriptor) {
+        if (singBoxTunDescriptor == descriptor) singBoxTunDescriptor = null;
+    }
+
+    /** Keep the public VPN state in sync if libbox stops itself or its command service. */
+    public void onSingBoxEngineStopped() {
+        isRunning = false;
+        singBoxTrafficAvailable = false;
+    }
+
+    /** Receives cumulative counters from libbox's native status stream. */
+    public void onSingBoxTrafficStats(long uploadBytes, long downloadBytes, boolean available) {
+        singBoxUploadBytes = Math.max(0L, uploadBytes);
+        singBoxDownloadBytes = Math.max(0L, downloadBytes);
+        singBoxTrafficAvailable = available;
+    }
 
     public static boolean isConnected() { return isRunning; }
 
     /**
-     * Returns the counters maintained by the WireGuard backend for the active peer.
-     * These values are actual tunnel traffic totals, not app UID totals or synthetic
-     * speed-test traffic. The snapshot is safe to obtain from Capacitor's plugin thread.
+     * Returns actual cumulative counters from the active VPN engine (WireGuard or
+     * Sing-box), never app UID estimates or synthetic speed-test traffic. The snapshot
+     * is safe to obtain from Capacitor's plugin thread.
      */
     public static TrafficSnapshot getTrafficSnapshot() {
-        SeloomVpnService service = activeService;
-        return service == null ? TrafficSnapshot.disconnected() : service.readTrafficSnapshot();
+        AlkhalidiVpnService service = activeService;
+        if (service == null) return TrafficSnapshot.disconnected();
+        if ("sing-box".equals(service.engineManager.activeEngineId())) {
+            return service.readSingBoxTrafficSnapshot();
+        }
+        return service.readTrafficSnapshot();
     }
 
     public static final class TrafficSnapshot {
@@ -64,16 +100,22 @@ public class SeloomVpnService extends VpnService {
         public final long downloadBytes;
         public final long uploadBytes;
         public final long latestHandshakeEpochMs;
+        public final boolean available;
 
         TrafficSnapshot(boolean connected, long downloadBytes, long uploadBytes, long latestHandshakeEpochMs) {
+            this(connected, downloadBytes, uploadBytes, latestHandshakeEpochMs, connected);
+        }
+
+        TrafficSnapshot(boolean connected, long downloadBytes, long uploadBytes, long latestHandshakeEpochMs, boolean available) {
             this.connected = connected;
             this.downloadBytes = Math.max(0L, downloadBytes);
             this.uploadBytes = Math.max(0L, uploadBytes);
             this.latestHandshakeEpochMs = Math.max(0L, latestHandshakeEpochMs);
+            this.available = available;
         }
 
         static TrafficSnapshot disconnected() {
-            return new TrafficSnapshot(false, 0L, 0L, 0L);
+            return new TrafficSnapshot(false, 0L, 0L, 0L, false);
         }
     }
 
@@ -90,7 +132,7 @@ public class SeloomVpnService extends VpnService {
             submitSafely(this::stopVpn);
             return START_NOT_STICKY;
         }
-        if (!ACTION_CONNECT.equals(intent.getAction())) return START_NOT_STICKY;
+        if (!ACTION_CONNECT.equals(intent.getAction()) && !ACTION_CONNECT_SINGBOX.equals(intent.getAction())) return START_NOT_STICKY;
 
         try {
             createNotificationChannel();
@@ -116,8 +158,31 @@ public class SeloomVpnService extends VpnService {
     }
 
     private void startVpn(Intent intent) {
+        try {
+            VpnEngineManager.Engine requested;
+            if (ACTION_CONNECT_SINGBOX.equals(intent.getAction())) {
+                String config = required(intent, EXTRA_CONFIG_JSON);
+                String name = intent.getStringExtra(EXTRA_SERVER_NAME);
+                config = applySingBoxVpnPolicy(
+                        config,
+                        intent.getBooleanExtra(EXTRA_BYPASS_LAN, false),
+                        cleanPackageList(intent.getStringExtra(EXTRA_EXCLUDED_APPLICATIONS)),
+                        getLocalNetworkCidrs());
+                requested = new SingBoxEngine(this, config, name == null ? "NexaLink" : name);
+            } else {
+                requested = new WireGuardEngine(intent);
+            }
+            engineManager.start(requested);
+            isRunning = requested.isRunning();
+        } catch (Exception error) {
+            isRunning = engineManager.activeEngineId() != null;
+            if (!isRunning) stopVpnAfterEngineStopped();
+            android.util.Log.e("NexaLinkVPN", "VPN engine start failed", error);
+        }
+    }
+
+    private void startWireGuardTunnel(Intent intent) throws Exception {
         synchronized (tunnelLock) {
-            try {
                 String privateKey = required(intent, EXTRA_PRIVATE_KEY);
                 String publicKey = required(intent, EXTRA_PUBLIC_KEY);
                 String endpoint = required(intent, EXTRA_ENDPOINT);
@@ -132,8 +197,9 @@ public class SeloomVpnService extends VpnService {
                 if (backend == null) throw new IllegalStateException("WireGuard backend unavailable");
                 if (!hasValidCidr(address) || !hasValidCidr(allowedIPs)) throw new IllegalArgumentException("Invalid VPN route");
                 if (!isEndpoint(endpoint)) throw new IllegalArgumentException("Invalid VPN endpoint");
-                // Split default routes keep Android's local-network routes available when requested.
-                if (bypassLan) allowedIPs = "0.0.0.0/1,128.0.0.0/1,::/1,8000::/1";
+                // Split only address-family defaults that the peer actually routes.
+                // IPv4-only peers must not acquire synthetic IPv6 routes.
+                allowedIPs = VpnRoutePolicy.applyLanBypass(allowedIPs, bypassLan, getLocalNetworkCidrs());
 
                 String tunnelName = safeTunnelName(intent.getStringExtra(EXTRA_SERVER_NAME));
                 String excludedLine = excludedApplications.isEmpty() ? "" : "ExcludedApplications = " + excludedApplications + "\n";
@@ -148,33 +214,133 @@ public class SeloomVpnService extends VpnService {
                 // GoBackend rejects duplicate tunnel names and concurrent state changes.
                 // Always tear down the old tunnel before creating the replacement.
                 if (tunnel != null) {
-                    try { backend.setState(tunnel, State.DOWN, null); } catch (Throwable ignored) {}
+                    backend.setState(tunnel, State.DOWN, null);
+                    if (backend.getState(tunnel) != State.DOWN) {
+                        throw new IllegalStateException("Previous WireGuard tunnel did not stop before replacement");
+                    }
                     tunnel = null;
                 }
                 tunnel = new AppTunnel(tunnelName);
                 backend.setState(tunnel, State.UP, config);
                 isRunning = backend.getState(tunnel) == State.UP;
-                if (!isRunning) stopVpn();
-            } catch (Throwable error) {
-                isRunning = false;
-                try { if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null); } catch (Throwable ignored) {}
-                tunnel = null;
-                stopVpn();
+                if (!isRunning) throw new IllegalStateException("WireGuard backend did not enter UP state");
             }
         }
+
+
+    /** Collect connected non-VPN interface prefixes so remote private networks remain routable. */
+    private java.util.List<String> getLocalNetworkCidrs() {
+        java.util.LinkedHashSet<String> routes = new java.util.LinkedHashSet<>();
+        android.net.ConnectivityManager manager = getSystemService(android.net.ConnectivityManager.class);
+        if (manager == null) return new java.util.ArrayList<>();
+        for (android.net.Network network : manager.getAllNetworks()) {
+            android.net.NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+            if (capabilities == null || capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)) continue;
+            android.net.LinkProperties properties = manager.getLinkProperties(network);
+            if (properties == null) continue;
+            for (android.net.LinkAddress linkAddress : properties.getLinkAddresses()) {
+                java.net.InetAddress address = linkAddress.getAddress();
+                if (address == null || address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isMulticastAddress()) continue;
+                String host = address.getHostAddress();
+                int zone = host.indexOf("%");
+                if (zone >= 0) host = host.substring(0, zone);
+                routes.add(host + "/" + linkAddress.getPrefixLength());
+            }
+        }
+        return new java.util.ArrayList<>(routes);
+    }
+    /** Applies Android VPN policy to the Sing-box TUN inbound before libbox starts. */
+    private static String applySingBoxVpnPolicy(String config, boolean bypassLan,
+                                                String excludedApplications,
+                                                java.util.List<String> localNetworks) throws Exception {
+        org.json.JSONObject root = new org.json.JSONObject(config);
+        org.json.JSONArray inbounds = root.optJSONArray("inbounds");
+        if (inbounds == null || inbounds.length() == 0) {
+            throw new IllegalArgumentException("Sing-box config has no TUN inbound");
+        }
+        org.json.JSONObject tun = null;
+        for (int i = 0; i < inbounds.length(); i++) {
+            org.json.JSONObject inbound = inbounds.optJSONObject(i);
+            if (inbound != null && "tun".equals(inbound.optString("type"))) {
+                tun = inbound;
+                break;
+            }
+        }
+        if (tun == null) throw new IllegalArgumentException("Sing-box config has no TUN inbound");
+        if (bypassLan) {
+            org.json.JSONArray excluded = new org.json.JSONArray();
+            for (String route : VpnRoutePolicy.lanExclusionCidrs(localNetworks)) excluded.put(route);
+            tun.put("route_exclude_address", excluded);
+        }
+        if (excludedApplications != null && !excludedApplications.trim().isEmpty()) {
+            org.json.JSONArray packages = new org.json.JSONArray();
+            for (String item : excludedApplications.split(",")) {
+                String value = item.trim();
+                if (value.matches("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z0-9_]+)+")) {
+                    packages.put(value);
+                }
+            }
+            if (packages.length() > 0) tun.put("exclude_package", packages);
+        }
+        return root.toString();
     }
 
     private void stopVpn() {
         try {
-            if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null);
-        } catch (Throwable ignored) {}
-        tunnel = null;
+            engineManager.stop();
+            stopVpnAfterEngineStopped();
+        } catch (Exception error) {
+            synchronized (tunnelLock) {
+                isRunning = engineManager.activeEngineId() != null || isWireGuardTunnelRunningLocked();
+            }
+        }
+    }
+
+    private void stopVpnAfterEngineStopped() {
         isRunning = false;
+        singBoxTunDescriptor = null;
         if (foregroundStarted) {
             try { stopForeground(true); } catch (Throwable ignored) {}
             foregroundStarted = false;
         }
         stopSelf();
+    }
+
+    private void stopWireGuardTunnel() throws Exception {
+        synchronized (tunnelLock) {
+            if (backend != null && tunnel != null) {
+                backend.setState(tunnel, State.DOWN, null);
+                if (backend.getState(tunnel) != State.DOWN) {
+                    throw new IllegalStateException("WireGuard tunnel did not enter DOWN state");
+                }
+            }
+            tunnel = null;
+            isRunning = false;
+        }
+    }
+
+    /**
+     * A failed backend state query is treated as running/uncertain. This keeps
+     * engine ownership conservative and prevents a second engine taking the TUN.
+     * Caller must hold tunnelLock.
+     */
+    private boolean isWireGuardTunnelRunningLocked() {
+        if (backend == null || tunnel == null) return false;
+        try {
+            return backend.getState(tunnel) == State.UP;
+        } catch (Exception stateError) {
+            return true;
+        }
+    }
+
+    private TrafficSnapshot readSingBoxTrafficSnapshot() {
+        boolean connected = isRunning;
+        return new TrafficSnapshot(
+                connected,
+                singBoxDownloadBytes,
+                singBoxUploadBytes,
+                0L,
+                connected && singBoxTrafficAvailable);
     }
 
     private TrafficSnapshot readTrafficSnapshot() {
@@ -235,16 +401,25 @@ public class SeloomVpnService extends VpnService {
     }
     private static int validMtu(int value) { return value >= 1280 && value <= 65535 ? value : 1280; }
     private static String safeTunnelName(String name) {
-        String result = name == null ? "SeloomWarp" : name.replaceAll("[^a-zA-Z0-9_=+.-]", "-");
-        if (result.isEmpty()) result = "SeloomWarp";
+        String result = name == null ? "NexaLink" : name.replaceAll("[^a-zA-Z0-9_=+.-]", "-");
+        if (result.isEmpty()) result = "NexaLink";
         return result.substring(0, Math.min(15, result.length()));
+    }
+
+    @Override public void onRevoke() {
+        submitSafely(this::stopVpn);
+        super.onRevoke();
     }
 
     @Override public void onDestroy() {
         destroyed = true;
+        try { engineManager.stop(); } catch (Exception ignored) {}
         try { if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null); }
         catch (Throwable ignored) {}
         tunnel = null;
+        android.os.ParcelFileDescriptor singBoxTun = singBoxTunDescriptor;
+        singBoxTunDescriptor = null;
+        if (singBoxTun != null) try { singBoxTun.close(); } catch (Exception ignored) {}
         isRunning = false;
         if (foregroundStarted) {
             try { stopForeground(true); } catch (Throwable ignored) {}
@@ -263,7 +438,7 @@ public class SeloomVpnService extends VpnService {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "حالة اتصال SeloomWarp VPN", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "NexaLink VPN status", NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -272,10 +447,23 @@ public class SeloomVpnService extends VpnService {
         Intent launch = new Intent(this, MainActivity.class);
         PendingIntent pending = PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("SeloomWarp VPN")
-            .setContentText("جاري الاتصال عبر " + (serverName == null ? "WireGuard" : serverName))
+            .setContentTitle("NexaLink VPN")
+            .setContentText("Connecting through " + (serverName == null ? "WireGuard" : serverName))
             .setSmallIcon(android.R.drawable.ic_lock_lock).setContentIntent(pending).setOngoing(true).setPriority(NotificationCompat.PRIORITY_LOW).build();
     }
+    private final class WireGuardEngine implements VpnEngineManager.Engine {
+        private final Intent connectIntent;
+        WireGuardEngine(Intent connectIntent) { this.connectIntent = new Intent(connectIntent); }
+        @Override public String id() { return "wireguard"; }
+        @Override public void start() throws Exception { startWireGuardTunnel(connectIntent); }
+        @Override public void stop() throws Exception { stopWireGuardTunnel(); }
+        @Override public boolean isRunning() {
+            synchronized (tunnelLock) {
+                return isWireGuardTunnelRunningLocked();
+            }
+        }
+    }
+
     private static final class AppTunnel implements Tunnel {
         private final String name;
         AppTunnel(String name) { this.name = name; }

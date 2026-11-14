@@ -15,6 +15,7 @@ class SessionResources(
 
     private var tun: TunHandle? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
+    private var datapathFileDescriptor: ParcelFileDescriptor? = null
     private var network: Network? = null
     private var datapathSession: DatapathSession? = null
     private var keepAliveCallback: ConnectivityManager.NetworkCallback? = null
@@ -65,14 +66,28 @@ class SessionResources(
         val descriptor = fileDescriptor
             ?: error("startDatapath: no TUN fd; acquire() must succeed first")
 
-        datapathSession = runCatching { Datapath.start(descriptor.fd.toLong(), mtu.toLong()) }
-            .getOrElse { failure ->
+        val originalFd = descriptor.fd
+        val duplicate = ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+        try {
+            check(duplicate.fileDescriptor.valid()) {
+                "startDatapath: duplicated TUN descriptor is invalid"
+            }
+            val duplicateFd = duplicate.fd
+            datapathSession = try {
+                Datapath.start(duplicateFd.toLong(), mtu.toLong())
+            } catch (failure: Throwable) {
                 throw IllegalStateException(
-                    "startDatapath: userspace stack failed to attach to fd " +
-                        "${descriptor.fd} (mtu=$mtu)",
+                    "startDatapath: gVisor TUN attach failed (original fd=$originalFd, " +
+                        "duplicate fd=$duplicateFd, mtu=$mtu): ${failure.javaClass.simpleName}: " +
+                        "${failure.message}",
                     failure,
                 )
             }
+            datapathFileDescriptor = duplicate
+        } catch (failure: Throwable) {
+            runCatching { duplicate.close() }.exceptionOrNull()?.let(failure::addSuppressed)
+            throw failure
+        }
     }
 
     fun bindDatapathTo(handle: Long) {
@@ -107,10 +122,25 @@ class SessionResources(
         keepAliveCallback = null
 
         datapathSession?.let { session ->
-            runCatching { session.stop() }
-                .onFailure { problems += "datapath.stop: ${it.message}" }
+            try {
+                session.stop()
+                datapathSession = null
+            } catch (failure: Throwable) {
+                problems += "datapath.stop: ${failure.message}"
+                problems.forEach { SessionLog.warn("teardown problem: $it") }
+                return problems
+            }
         }
-        datapathSession = null
+        datapathFileDescriptor?.let { descriptor ->
+            try {
+                descriptor.close()
+                datapathFileDescriptor = null
+            } catch (failure: Throwable) {
+                problems += "close(datapath fd): ${failure.message}"
+                problems.forEach { SessionLog.warn("teardown problem: $it") }
+                return problems
+            }
+        }
 
         network?.let { acquired ->
             runCatching { testNetworkApi.teardownTestNetwork(acquired) }

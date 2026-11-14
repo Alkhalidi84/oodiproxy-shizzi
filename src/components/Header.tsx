@@ -25,7 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Center: OODI PROXY SELOOM1 brand title */}
+        {/* Center: NEXALINK brand title */}
         <div className="flex flex-col items-center justify-center text-center">
           <div className="flex items-center gap-1.5">
             <div className="relative flex items-center justify-center">
@@ -33,11 +33,11 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="absolute inset-0 bg-cyan-400/20 blur-md rounded-full -z-10" />
             </div>
             <h1 className="text-xl font-black tracking-tight text-white flex items-center">
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-fuchsia-400">OODI PROXY SELOOM1</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-fuchsia-400">NEXALINK</span>
             </h1>
           </div>
           <div className="text-[11px] font-bold text-cyan-300 tracking-wider">
-            1.1.1.1 <span className="text-slate-300 font-medium">VPN PROXY</span>
+            SECURE CONNECTION <span className="text-slate-400 font-medium">• SMART TETHERING</span>
           </div>
         </div>
 

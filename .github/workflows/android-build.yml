@@ -1,0 +1,269 @@
+name: NexaLink Android Build
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, rebrand/nexalink-english]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nexalink-${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: TypeScript and Android debug build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018"
+
+      - name: Set up Go for the Shizzi datapath
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: third_party/shizzi/datapath/go.mod
+          cache-dependency-path: third_party/shizzi/datapath/go.sum
+
+      - name: Build the Shizzi Android datapath AAR
+        working-directory: third_party/shizzi/datapath
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          gomobile init
+          gomobile bind -javapkg=dev.shizzi.gomobile -target=android -androidapi 30 -o "$GITHUB_WORKSPACE/android/shizzi/libs/datapath.aar" .
+
+      # Build the exact ARM64 libbox AAR consumed by the Android app.
+      # Keep this in the same workflow so APK builds never race a separate artifact workflow.
+      - name: Set up Go for Sing-box libbox
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: true
+
+      - name: Set up Java 17 for Sing-box build
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android NDK r28 for Sing-box
+        id: setup-singbox-ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28
+
+      - name: Build pinned Sing-box v1.14.4 libbox AAR
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-singbox-ndk.outputs.ndk-path }}
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch v1.14.4 https://github.com/SagerNet/sing-box.git /tmp/sing-box
+          cd /tmp/sing-box
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          test -s libbox.aar
+          mkdir -p "$GITHUB_WORKSPACE/android/app/libs"
+          cp libbox.aar "$GITHUB_WORKSPACE/android/app/libs/libbox.aar"
+          unzip -Z1 libbox.aar | grep -Fxq 'jni/arm64-v8a/libbox.so'
+          unzip -p libbox.aar classes.jar > /tmp/libbox-classes.jar
+          jar tf /tmp/libbox-classes.jar | grep -Fxq 'io/nekohasekai/libbox/CommandServer.class'
+          sha256sum "$GITHUB_WORKSPACE/android/app/libs/libbox.aar"
+
+      # Both gomobile AARs carry a copy of the global go.Seq runtime.
+      # Keep the libbox copy only after proving every duplicated class exposes
+      # the same public JVM ABI; retain Shizzi's own generated datapath classes.
+      - name: Share the verified gomobile Go runtime
+        run: |
+          python3 - <<'PY'
+          import io
+          import os
+          import subprocess
+          import tempfile
+          import zipfile
+
+          datapath_aar = "android/shizzi/libs/datapath.aar"
+          libbox_aar = "android/app/libs/libbox.aar"
+
+          def classes_jar(path):
+              with zipfile.ZipFile(path) as aar:
+                  return aar.read("classes.jar")
+
+          with tempfile.TemporaryDirectory() as tmp:
+              jars = []
+              for label, aar_path in (("datapath", datapath_aar), ("libbox", libbox_aar)):
+                  jar_path = os.path.join(tmp, label + ".jar")
+                  with open(jar_path, "wb") as out:
+                      out.write(classes_jar(aar_path))
+                  jars.append(jar_path)
+
+              def class_names(jar_path):
+                  with zipfile.ZipFile(jar_path) as jar:
+                      return {n for n in jar.namelist()
+                              if n.startswith("go/") and n.endswith(".class")}
+
+              datapath_classes = class_names(jars[0])
+              libbox_classes = class_names(jars[1])
+              duplicates = sorted(datapath_classes & libbox_classes)
+              if not duplicates:
+                  raise SystemExit("Expected shared gomobile go.* classes were not found")
+
+              def public_abi(jar_path, class_file):
+                  name = class_file[:-6].replace("/", ".")
+                  result = subprocess.run(
+                      ["javap", "-classpath", jar_path, "-public", "-s", name],
+                      check=True, text=True, capture_output=True
+                  )
+                  # Ignore compiler/source metadata; compare public members and JVM descriptors.
+                  return "\n".join(result.stdout.splitlines()[1:]).strip()
+
+              for class_file in duplicates:
+                  left = set(public_abi(jars[0], class_file).splitlines())
+                  right = set(public_abi(jars[1], class_file).splitlines())
+                  missing = sorted(left - right)
+                  if missing:
+                      raise SystemExit(
+                          "libbox gomobile runtime is not a compatible superset for " + class_file +
+                          "\\nMissing from libbox: " + "\\n".join(missing)
+                      )
+
+              rebuilt_classes = io.BytesIO()
+              with zipfile.ZipFile(jars[0]) as source, zipfile.ZipFile(
+                  rebuilt_classes, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for item in source.infolist():
+                      if item.filename.startswith("go/") and item.filename.endswith(".class"):
+                          continue
+                      target.writestr(item, source.read(item.filename))
+
+              replacement = io.BytesIO()
+              with zipfile.ZipFile(datapath_aar) as source, zipfile.ZipFile(
+                  replacement, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for item in source.infolist():
+                      data = rebuilt_classes.getvalue() if item.filename == "classes.jar" else source.read(item.filename)
+                      target.writestr(item, data)
+
+              with open(datapath_aar, "wb") as out:
+                  out.write(replacement.getvalue())
+
+              with zipfile.ZipFile(rebuilt_classes) as rebuilt_jar:
+                  rebuilt_names = {n for n in rebuilt_jar.namelist()
+                                   if n.startswith("go/") and n.endswith(".class")}
+              remaining = rebuilt_names & libbox_classes
+              if remaining:
+                  raise SystemExit("Duplicate runtime classes remain: " + ", ".join(sorted(remaining)))
+
+              # The Shizzi library compiles against this small JAR, while the
+              # app packages the authoritative runtime from libbox.aar exactly once.
+              runtime_jar = "android/shizzi/libs/go-runtime.jar"
+              os.makedirs(os.path.dirname(runtime_jar), exist_ok=True)
+              runtime_count = 0
+              with zipfile.ZipFile(jars[1]) as source, zipfile.ZipFile(
+                  runtime_jar, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for name in sorted(source.namelist()):
+                      if name.startswith("go/") and name.endswith(".class"):
+                          target.writestr(name, source.read(name))
+                          runtime_count += 1
+              if runtime_count == 0:
+                  raise SystemExit("libbox classes.jar contains no gomobile go.* runtime classes")
+              print("Verified and shared", len(duplicates), "gomobile runtime classes;")
+              print("extracted", runtime_count, "runtime classes for Shizzi compile classpath")
+          PY
+
+      - name: Restore Java 21 for Android Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Type-check application
+        run: npm run lint
+
+      - name: Build web assets and sync Capacitor
+        run: npm run android:sync
+
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :shizzi:testDebugUnitTest
+
+      - name: Assemble Android debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Verify Android APK package and native ABI
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.oodiproxyseloom1.shizzi' versionCode='18' versionName='2.2.1'"
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libbox.so'
+          unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libwg-go.so'
+          if unzip -Z1 "$APK" | grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo "Unexpected native ABI packaged in the ARM64-only APK" >&2
+            exit 1
+          fi
+          echo "Verified APK package identity, Sing-box/WireGuard ARM64 libraries, and ZIP integrity."
+          sha256sum "$APK"
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexalink-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  datapath-tests:
+    name: Go datapath tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: third_party/shizzi/datapath/go.mod
+          cache-dependency-path: third_party/shizzi/datapath/go.sum
+
+      - name: Test userspace datapath
+        working-directory: third_party/shizzi/datapath
+        run: go test -race ./...
+
+      - name: Vet userspace datapath
+        working-directory: third_party/shizzi/datapath
+        run: go vet ./...

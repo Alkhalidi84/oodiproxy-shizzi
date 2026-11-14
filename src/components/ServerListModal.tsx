@@ -44,7 +44,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="server-list-title"
-        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-right overflow-hidden"
+        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-left overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -57,7 +57,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
           
           <div className="flex items-center gap-2">
             <h2 id="server-list-title" className="text-lg font-bold text-white tracking-wide">
-              قائمة خوادم WireGuard
+              WireGuard Server List
             </h2>
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <Server className="w-5 h-5" />
@@ -65,7 +65,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
           </div>
         </div>
 
-        {/* Action bar: active tunnel latency check and Add new */}
+        {/* Action bar: active-route internet RTT check and Add new */}
         <div className="flex items-center justify-between gap-2 my-3">
           <button
             onClick={onPingAll}
@@ -73,7 +73,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
             className="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-cyan-300 flex items-center gap-1.5 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-            <span>{isPinging ? 'جارٍ الفحص...' : 'فحص زمن النفق النشط'}</span>
+            <span>{isPinging ? 'Checking...' : 'Test Internet RTT'}</span>
           </button>
 
           <button
@@ -84,7 +84,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-bold text-white shadow-md flex items-center gap-1.5 transition-all active:scale-95"
           >
             <Plus className="w-4 h-4" />
-            <span>إضافة خادم جديد</span>
+            <span>Add New Server</span>
           </button>
         </div>
 
@@ -99,7 +99,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onSelectServer(server)}
-                className={`w-full rounded-2xl p-3.5 border transition-all cursor-pointer group text-right ${
+                className={`w-full rounded-2xl p-3.5 border transition-all cursor-pointer group text-left ${
                   isActive
                     ? 'bg-cyan-950/40 border-cyan-400/50 shadow-[0_0_20px_rgba(6,182,212,0.15)] ring-1 ring-cyan-400/30'
                     : 'bg-slate-900/60 hover:bg-slate-800/60 border-slate-800 hover:border-slate-700'
@@ -113,7 +113,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
                         e.stopPropagation();
                         onExportConfig(server);
                       }}
-                      title="عرض QR Code وملف .conf"
+                      title="View QR Code and .conf File"
                       className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 transition-colors"
                     >
                       <QrCode className="w-4 h-4" />
@@ -121,7 +121,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
 
                     <button
                       onClick={(e) => handleCopyUri(server, e)}
-                      title="نسخ رابط wireguard://"
+                      title="Copy wireguard:// Link"
                       className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-cyan-300 transition-colors"
                     >
                       {copiedId === server.id ? (
@@ -137,7 +137,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
                           e.stopPropagation();
                           onDeleteServer(server.id);
                         }}
-                        title="حذف الخادم"
+                        title="Delete Server"
                         className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950 text-slate-400 hover:text-rose-400 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -151,7 +151,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
                       {isActive && (
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                          <span>الخادم النشط</span>
+                          <span>Active Server</span>
                         </span>
                       )}
                       <span className="text-sm font-bold text-white tracking-wide truncate">
@@ -183,7 +183,7 @@ export const ServerListModal: React.FC<ServerListModalProps> = ({
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-white transition-colors"
           >
-            إغلاق
+            Close
           </button>
         </div>
       </div>

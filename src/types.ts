@@ -1,4 +1,4 @@
-export type ProtocolType = 'WireGuard' | 'VLESS' | 'VMess' | 'Trojan';
+export type ProtocolType = 'WireGuard';
 
 export interface WireguardServer {
   id: string;
@@ -21,7 +21,7 @@ export interface WireguardServer {
   createdAt: number;
 }
 
-export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting';
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'disconnecting' | 'reconnecting';
 
 export interface AppSettings {
   dpiBypass: boolean;

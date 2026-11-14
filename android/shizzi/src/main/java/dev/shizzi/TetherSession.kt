@@ -22,10 +22,13 @@ class TetherSession(private val context: Context) {
     private var watchdog: SessionWatchdog? = null
     private val teardown = SessionTeardown(context)
     private val downstream = DownstreamInspector()
+    private val hotspotClients = HotspotClientManager(context)
     private val vpn = VpnUpstream(context) { problem -> tearDownAfter(problem) }
 
+    @get:Synchronized
     val isActive: Boolean get() = state == SessionState.ACTIVE
 
+    @Synchronized
     fun start(mode: VpnMode = VpnMode.AUTO): String {
         if (isActive) return status()
 
@@ -53,6 +56,11 @@ class TetherSession(private val context: Context) {
     }
 
     private fun bringUp(): String {
+        // Tethering must prefer TRANSPORT_TEST before the test network is created
+        // and before downstream tethering is restarted. Applying this after the
+        // gVisor endpoint starts can leave the TestNetwork TUN unprepared.
+        preferTestNetworks()
+
         val group = SessionResources(testNetworkApi, context.connectivityManager())
         resources = group
 
@@ -64,7 +72,6 @@ class TetherSession(private val context: Context) {
         SessionLog.info("datapath attached to $name")
         followVpn(group)
 
-        preferTestNetworks()
         restartDownstream()
 
         verifyUpstream(name)
@@ -131,17 +138,23 @@ class TetherSession(private val context: Context) {
     private fun awaitDownstreamTethered() {
         val deadline = System.currentTimeMillis() + DOWNSTREAM_SETTLE_MS
         val downstream = DownstreamInspector()
+        var lastObservation: Boolean? = null
 
         while (System.currentTimeMillis() < deadline) {
-
-            if (downstream.findTetheredDownstream() != null) {
-                SessionLog.info("downstream tethered")
+            lastObservation = downstream.isTethered()
+            if (lastObservation == true) {
+                SessionLog.info("downstream tethered and confirmed by dumpsys")
                 return
             }
             Thread.sleep(DOWNSTREAM_POLL_MS)
         }
 
-        SessionLog.warn("downstream not tethered after ${DOWNSTREAM_SETTLE_MS}ms; continuing")
+        val reason = when (lastObservation) {
+            false -> "hotspot did not enter TetheredState"
+            null -> "dumpsys tethering did not provide a reliable state"
+            true -> "downstream verification timed out"
+        }
+        error("awaitDownstreamTethered: $reason after ${DOWNSTREAM_SETTLE_MS}ms")
     }
 
     private fun verifyUpstream(name: String) {
@@ -159,6 +172,7 @@ class TetherSession(private val context: Context) {
     private fun liveUpstreams(owned: String): List<String> =
         inspector.observe().liveInterfaceNames(owned)
 
+    @Synchronized
     fun stop(): String {
         watchdog?.stop()
         watchdog = null
@@ -176,15 +190,18 @@ class TetherSession(private val context: Context) {
 
         interfaceName = null
         activeSince = 0
-        state = if (downstreamProblem == null) SessionState.IDLE else SessionState.ERROR
-        detail = downstreamProblem ?: "stopped"
-
-        when (downstreamProblem) {
-            null -> SessionLog.info("session stopped; downstream confirmed down")
-            else -> SessionLog.error("teardown: $downstreamProblem")
+        val teardownProblems = buildList {
+            downstreamProblem?.let(::add)
+            addAll(releaseProblems)
         }
-        if (releaseProblems.isNotEmpty()) {
-            SessionLog.warn("${releaseProblems.size} resource(s) not released cleanly")
+        state = if (teardownProblems.isEmpty()) SessionState.IDLE else SessionState.ERROR
+        detail = if (teardownProblems.isEmpty()) "stopped"
+            else teardownProblems.joinToString("; ")
+
+        if (teardownProblems.isEmpty()) {
+            SessionLog.info("session stopped; downstream and owned resources released")
+        } else {
+            SessionLog.error("teardown incomplete: ${teardownProblems.joinToString("; ")}")
         }
         summary?.let(SessionLog::info)
         return status()
@@ -214,6 +231,7 @@ class TetherSession(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun status(): String = JSONObject().apply {
         put("state", state.name)
         put("detail", detail)
@@ -226,7 +244,13 @@ class TetherSession(private val context: Context) {
         put("bytesUp", traffic.up)
         put("bytesDown", traffic.down)
         put("clientCount", if (isActive) downstream.countDevices() else 0)
+        val datapathStats = if (isActive) resources?.datapathStatsJson() else null
+        put("clientInventory", if (isActive) hotspotClients.snapshot(datapathStats) else JSONObject())
     }.toString()
+
+    @Synchronized
+    fun setClientBlocked(macAddress: String, blocked: Boolean): String =
+        hotspotClients.setBlocked(macAddress, blocked).toString()
 
     private fun isVpnBypassed(): Boolean {
         if (vpnMode != VpnMode.NEVER) return false

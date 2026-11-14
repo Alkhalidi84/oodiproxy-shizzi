@@ -41,7 +41,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-config-title"
-        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-right overflow-hidden"
+        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-left overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -54,7 +54,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
           
           <div className="flex items-center gap-2">
             <h2 id="export-config-title" className="text-lg font-bold text-white tracking-wide">
-              تصدير إعدادات WireGuard
+              Export WireGuard Configuration
             </h2>
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <QrCode className="w-5 h-5" />
@@ -79,7 +79,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
             }`}
           >
             <QrCode className="w-3.5 h-3.5" />
-            <span>رمز الاستجابة السريعة (QR Code)</span>
+            <span>QR Code</span>
           </button>
 
           <button
@@ -91,7 +91,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
             }`}
           >
             <FileText className="w-3.5 h-3.5" />
-            <span>ملف الإعدادات (.conf)</span>
+            <span>Configuration File (.conf)</span>
           </button>
         </div>
 
@@ -110,13 +110,16 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
               </div>
 
               <p className="text-xs text-slate-300 text-center max-w-sm">
-                امسح الرمز بواسطة تطبيق <strong className="text-cyan-300">WireGuard</strong> الرسمي على هاتفك (Android / iOS) لإضافة الخادم والاتصال فورًا.
+                Scan this code with the official <strong className="text-cyan-300">WireGuard</strong> app on your phone (Android / iOS) to add the server and connect.
+              </p>
+              <p className="text-[11px] text-amber-300 text-center max-w-sm" role="note">
+                Security: this QR code contains the WireGuard private key. Only share it with a device you trust.
               </p>
             </div>
           ) : (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-slate-400">
-                <span>تنسيق WireGuard الرسمي</span>
+                <span>Official WireGuard Format</span>
                 <span className="font-mono text-cyan-400">wireguard.conf</span>
               </div>
               <pre
@@ -137,7 +140,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-colors"
             >
               {copiedUri ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedUri ? 'تم النسخ' : 'نسخ رابط wireguard://'}</span>
+              <span>{copiedUri ? 'Copied' : 'Copy wireguard:// Link'}</span>
             </button>
 
             <button
@@ -145,7 +148,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
               className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition-colors"
             >
               {copiedConf ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <FileText className="w-3.5 h-3.5" />}
-              <span>{copiedConf ? 'تم النسخ' : 'نسخ كود .conf'}</span>
+              <span>{copiedConf ? 'Copied' : 'Copy .conf Content'}</span>
             </button>
           </div>
 
@@ -154,7 +157,7 @@ export const ConfigExportModal: React.FC<ConfigExportModalProps> = ({
             className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-bold text-white shadow-md flex items-center gap-1.5 transition-all active:scale-95"
           >
             <Download className="w-4 h-4" />
-            <span>تحميل ملف .conf</span>
+            <span>Download .conf File</span>
           </button>
         </div>
       </div>

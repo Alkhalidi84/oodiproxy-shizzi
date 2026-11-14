@@ -11,6 +11,7 @@ interface ITetherService {
     String stop();
 
     String getStatus();
+    String setClientBlocked(String macAddress, boolean blocked);
 
     String runProbes(boolean attemptTethering, int availabilityTimeoutMs);
 

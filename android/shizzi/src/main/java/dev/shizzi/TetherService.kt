@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 open class TetherService : ITetherService.Stub {
 
@@ -43,6 +44,10 @@ open class TetherService : ITetherService.Stub {
     override fun getStatus(): String =
         runCatching { session.status() }
             .getOrElse { failure -> sessionError("getStatus", failure) }
+
+    override fun setClientBlocked(macAddress: String?, blocked: Boolean): String =
+        runCatching { session.setClientBlocked(macAddress.orEmpty(), blocked) }
+            .getOrElse { failure -> sessionError("setClientBlocked", failure) }
 
     override fun setLogging(enabled: Boolean) {
         SessionLog.setEnabled(enabled)
@@ -111,6 +116,15 @@ open class TetherService : ITetherService.Stub {
     }
 
     companion object {
+
+        // Shizuku UserService runs in a separate shell/root process. The app's
+        // Application.onCreate() is not a reliable place to initialize hidden-API
+        // exemptions for this process, so do it before acquiring system Context.
+        init {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                HiddenApiBypass.addHiddenApiExemptions("Landroid/")
+            }
+        }
 
         val CONTRACT_VERSION = BuildConfig.SERVICE_BUILD_ID
 

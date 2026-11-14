@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "nexalink-android",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
@@ -38,5 +38,7 @@
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
     "@types/express": "^4.17.21"
-  }
+  },
+  "description": "NexaLink - WireGuard VPN and Shizuku-powered smart tethering for Android",
+  "author": "Mustafa Al-Khalidi"
 }

@@ -6,11 +6,7 @@ import dev.shizzi.ShizukuState
 import dev.shizzi.SessionUiState
 
 @Composable
-fun SessionToasts(
-    state: SessionUiState,
-    toasts: ToastState,
-    onRequestPermission: () -> Unit,
-) {
+fun SessionToasts(state: SessionUiState, toasts: ToastState, onRequestPermission: () -> Unit) {
     ErrorToast(state.lastError, toasts)
     ShizukuToast(state.shizukuState, toasts, onRequestPermission)
 }
@@ -22,39 +18,24 @@ private fun ErrorToast(lastError: String, toasts: ToastState) {
             toasts.dismiss(ToastKeys.SESSION)
             return@LaunchedEffect
         }
-
-        toasts.show(
-            Toast(
-                key = ToastKeys.SESSION,
-                message = lastError,
-                duration = ToastDuration.Indefinite,
-            ),
-        )
+        toasts.show(Toast(key = ToastKeys.SESSION, message = lastError, duration = ToastDuration.Indefinite))
     }
 }
 
 @Composable
-private fun ShizukuToast(
-    state: ShizukuState,
-    toasts: ToastState,
-    onRequestPermission: () -> Unit,
-) {
+private fun ShizukuToast(state: ShizukuState, toasts: ToastState, onRequestPermission: () -> Unit) {
     LaunchedEffect(state) {
         val message = describe(state)
         if (message.isEmpty()) {
             toasts.dismiss(ToastKeys.SHIZUKU)
             return@LaunchedEffect
         }
-
-        toasts.show(
-            Toast(
-                key = ToastKeys.SHIZUKU,
-                message = message,
-                duration = ToastDuration.Indefinite,
-                action = ToastAction("Grant", onRequestPermission)
-                    .takeIf { state is ShizukuState.PermissionRequired },
-            ),
-        )
+        toasts.show(Toast(
+            key = ToastKeys.SHIZUKU,
+            message = message,
+            duration = ToastDuration.Indefinite,
+            action = ToastAction("Grant", onRequestPermission).takeIf { state is ShizukuState.PermissionRequired },
+        ))
     }
 }
 
@@ -62,5 +43,6 @@ private fun describe(state: ShizukuState): String = when (state) {
     is ShizukuState.NotInstalled -> "Shizuku is not installed"
     is ShizukuState.NotRunning -> "Shizuku is installed but not running"
     is ShizukuState.PermissionRequired -> "Shizzi needs permission from Shizuku"
+    is ShizukuState.UnsupportedIdentity -> "Unsupported Shizuku UID ${state.uid}; use shell (2000) or root (0)"
     is ShizukuState.Ready -> ""
 }

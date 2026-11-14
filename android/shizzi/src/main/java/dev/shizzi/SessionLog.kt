@@ -53,18 +53,16 @@ object SessionLog {
 
     @Synchronized
     fun append(level: LogLevel, message: String) {
-        Log.println(priorityOf(level), TAG, message)
+        val safeMessage = LogRedactor.redact(message)
+        Log.println(priorityOf(level), TAG, safeMessage)
         if (!isEnabled) return
 
         runCatching {
             val stamp = TIMESTAMP.format(Date())
             val file = File(writePath)
-            val isNew = !file.exists()
+            file.appendText("$stamp ${level.name.padEnd(5)} $safeMessage\n")
 
-            file.appendText("$stamp ${level.name.padEnd(5)} $message\n")
-
-            if (isNew) file.setReadable(true, false)
-
+            // Keep the file under the app-private files directory and preserve its default permissions.
             truncateIfLarge(writePath)
         }.onFailure { failure ->
             Log.w(TAG, "append failed: ${failure.message}")
@@ -94,10 +92,10 @@ object SessionLog {
         if (line.isBlank()) return null
 
         val match = LINE.find(line)
-            ?: return LogEntry(timestamp = "", level = LogLevel.INFO, message = line)
+            ?: return LogEntry(timestamp = "", level = LogLevel.INFO, message = LogRedactor.redact(line))
 
         val (timestamp, level, message) = match.destructured
-        return LogEntry(timestamp, LogLevel.valueOf(level), message)
+        return LogEntry(timestamp, LogLevel.valueOf(level), LogRedactor.redact(message))
     }
 
     private fun truncateIfLarge(path: String) {

@@ -49,6 +49,8 @@ data class AppActions(
     val onRestartOnboarding: () -> Unit,
     val onSetAutomation: (Boolean) -> Unit,
     val onRegenerateAutomationToken: () -> Unit,
+    val onRefreshHotspotClients: () -> Unit,
+    val onSetHotspotClientBlocked: (String, Boolean) -> Unit,
 )
 
 
@@ -127,6 +129,8 @@ private fun HomeRoute(context: ScreenContext) {
             onCancel = actions.onCancel,
             onOpenSettings = { context.navigation.open(Screen.SETTINGS) },
             onOpenEasterEgg = { context.navigation.open(Screen.EASTER_EGG) },
+            onRefreshClients = actions.onRefreshHotspotClients,
+            onSetClientBlocked = actions.onSetHotspotClientBlocked,
         ),
     )
 }

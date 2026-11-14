@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldOff } from 'lucide-react';
 import { Header } from './components/Header';
 import { PowerSwitch } from './components/PowerSwitch';
+import { ProtocolSelector } from './components/ProtocolSelector';
+import type { VpnEngineChoice } from './components/ProtocolSelector';
 import { StatsCard } from './components/StatsCard';
 import { DeviceInfoBar } from './components/DeviceInfoBar';
 import { TelegramBanner } from './components/TelegramBanner';
@@ -14,6 +16,8 @@ import { NavigationDrawer } from './components/NavigationDrawer';
 import { BalyBadge } from './components/BalyBadge';
 import { ConnectionHistoryModal } from './components/ConnectionHistoryModal';
 import { AppExclusionsModal } from './components/AppExclusionsModal';
+import { ProxyProfilesModal, SavedProxyProfile } from './components/ProxyProfilesModal';
+import { DiagnosticsModal } from './components/DiagnosticsModal';
 
 import { WireguardServer, ConnectionState, AppSettings, NetworkTelemetry, ConnectionLogEntry } from './types';
 import { getInitialServers, parseWireguardUri, USER_DEFAULT_URI } from './utils/wireguard';
@@ -21,12 +25,74 @@ import { measureRealPing } from './utils/realSpeed';
 import { fetchRealExternalIpAndCountry } from './utils/geoIp';
 import VpnBridge, { InstalledApp } from './utils/vpnBridge';
 import ShizziBridge from './utils/shizziBridge';
+import { decryptBackup, encryptBackup } from './utils/backup';
 import { CellularInfo, EMPTY_CELLULAR_INFO, readCellularInfo } from './utils/cellularInfo';
 
 const STORAGE_SERVERS_KEY = 'seloomwarp_servers_v1';
 const STORAGE_SETTINGS_KEY = 'seloomwarp_settings_v1';
 const STORAGE_ACTIVE_SERVER_KEY = 'seloomwarp_active_id_v1';
 const STORAGE_CONNECTION_LOG_KEY = 'seloomwarp_connection_log_v1';
+
+const STORAGE_RECONNECT_INTENT_KEY = 'nexalink_reconnect_intent_v1';
+const STORAGE_PROXY_PROFILES_KEY = 'nexalink_proxy_profiles_v1';
+const STORAGE_VPN_ENGINE_KEY = 'nexalink_vpn_engine_v1';
+const delay = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+
+function readReconnectIntent(): boolean {
+  try { return localStorage.getItem(STORAGE_RECONNECT_INTENT_KEY) === 'true'; } catch { return false; }
+}
+
+function normalizeStoredProxyProfiles(value: unknown): SavedProxyProfile[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is SavedProxyProfile =>
+    !!item && typeof item.id === 'string' && typeof item.link === 'string'
+    && ['vless', 'vmess', 'trojan'].includes(item.protocol)
+    && typeof item.name === 'string' && typeof item.server === 'string'
+    && Number.isInteger(item.port) && item.port > 0 && item.port <= 65535
+  ).slice(0, 100);
+}
+
+async function connectProxyProfile(profile: SavedProxyProfile, settings: AppSettings): Promise<boolean> {
+  await VpnBridge.connectProxy({
+    link: profile.link,
+    bypassLanRoute: settings.bypassLanRoute,
+    excludedApplications: settings.excludedApplications,
+  });
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await delay(250);
+    if ((await VpnBridge.isVpnConnected()).connected) return true;
+  }
+  await VpnBridge.disconnect().catch(() => undefined);
+  return false;
+}
+
+async function connectWireGuard(server: WireguardServer, settings: AppSettings): Promise<boolean> {
+  await VpnBridge.connect({
+    serverName: server.name || 'NexaLink',
+    endpoint: server.endpoint,
+    dns: Array.isArray(server.dns) ? server.dns.join(',') : server.dns,
+    address: Array.isArray(server.addresses) ? server.addresses.join(',') : (server.addresses || '172.16.0.2/32'),
+    privateKey: server.privateKey,
+    publicKey: server.publicKey,
+    allowedIPs: Array.isArray(server.allowedIPs) ? server.allowedIPs.join(',') : '0.0.0.0/0',
+    bypassLanRoute: settings.bypassLanRoute,
+    excludedApplications: settings.excludedApplications,
+    mtu: settings.mtu,
+    keepalive: settings.keepalive,
+  });
+  // Native VPN startup can take several seconds on slower Android devices.
+  // Confirm the actual VpnService state instead of treating the start command
+  // response as a successful connection.
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    await delay(250);
+    if ((await VpnBridge.isVpnConnected()).connected) return true;
+  }
+
+  // A timed-out startup must not leave a background tunnel running while the
+  // UI says "disconnected".
+  await VpnBridge.disconnect().catch(() => undefined);
+  return false;
+}
 
 function normalizeStoredServers(value: unknown): WireguardServer[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
@@ -56,8 +122,55 @@ function normalizeStoredServers(value: unknown): WireguardServer[] | null {
   });
 }
 
+
+function isStringArray(value: unknown, maxItems: number, maxLength = 256): value is string[] {
+  return Array.isArray(value)
+    && value.length <= maxItems
+    && value.every((item) => typeof item === 'string' && item.length > 0 && item.length <= maxLength);
+}
+
+function isValidBackupServer(value: unknown): value is WireguardServer {
+  if (!value || typeof value !== 'object') return false;
+  const server = value as Partial<WireguardServer>;
+  return server.protocol === 'WireGuard'
+    && typeof server.id === 'string' && server.id.length > 0 && server.id.length <= 128
+    && typeof server.name === 'string' && server.name.length > 0 && server.name.length <= 128
+    && typeof server.rawUri === 'string' && server.rawUri.length <= 4096
+    && typeof server.endpoint === 'string' && server.endpoint.length <= 300
+    && typeof server.host === 'string' && server.host.length <= 253
+    && Number.isInteger(server.port) && Number(server.port) >= 1 && Number(server.port) <= 65535
+    && typeof server.privateKey === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(server.privateKey)
+    && typeof server.publicKey === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(server.publicKey)
+    && isStringArray(server.addresses, 8, 64)
+    && isStringArray(server.dns, 8, 64)
+    && isStringArray(server.allowedIPs, 32, 128)
+    && Number.isInteger(server.mtu) && Number(server.mtu) >= 576 && Number(server.mtu) <= 9000
+    && Number.isInteger(server.persistentKeepalive) && Number(server.persistentKeepalive) >= 0 && Number(server.persistentKeepalive) <= 65535
+    && Number.isFinite(server.createdAt);
+}
+
+function sanitizeBackupSettings(value: unknown, current: AppSettings): AppSettings {
+  if (!value || typeof value !== 'object') return current;
+  const raw = value as Partial<AppSettings>;
+  const next: AppSettings = { ...current };
+  if (typeof raw.dpiBypass === 'boolean') next.dpiBypass = raw.dpiBypass;
+  if (typeof raw.autoReconnect === 'boolean') next.autoReconnect = raw.autoReconnect;
+  if (typeof raw.bypassLanRoute === 'boolean') next.bypassLanRoute = raw.bypassLanRoute;
+  if (typeof raw.externalIp === 'string' && raw.externalIp.length <= 128) next.externalIp = raw.externalIp;
+  if (typeof raw.location === 'string' && raw.location.length <= 128) next.location = raw.location;
+  if (typeof raw.country === 'string' && raw.country.length <= 80) next.country = raw.country;
+  if (typeof raw.countryFlag === 'string' && raw.countryFlag.length <= 16) next.countryFlag = raw.countryFlag;
+  if (typeof raw.defaultDns === 'string' && raw.defaultDns.length <= 64) next.defaultDns = raw.defaultDns;
+  if (Number.isInteger(raw.mtu) && Number(raw.mtu) >= 576 && Number(raw.mtu) <= 9000) next.mtu = Number(raw.mtu);
+  if (Number.isInteger(raw.keepalive) && Number(raw.keepalive) >= 0 && Number(raw.keepalive) <= 65535) next.keepalive = Number(raw.keepalive);
+  if (isStringArray(raw.excludedApplications, 200, 256)) next.excludedApplications = raw.excludedApplications;
+  if (raw.language === 'en' || raw.language === 'ar') next.language = raw.language;
+  return next;
+}
+
 export default function App() {
   // 1. Servers state
+  const [serversStorageReady, setServersStorageReady] = useState(false);
   const [servers, setServers] = useState<WireguardServer[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_SERVERS_KEY);
@@ -70,6 +183,20 @@ export default function App() {
     }
     return getInitialServers();
   });
+
+  // Saved Sing-box profiles are stored separately from WireGuard peers.
+  const [proxyProfiles, setProxyProfiles] = useState<SavedProxyProfile[]>([]);
+  const [proxyProfilesStorageReady, setProxyProfilesStorageReady] = useState(false);
+  const [activeProxyId, setActiveProxyId] = useState<string | null>(() => {
+    try { return localStorage.getItem('nexalink_active_proxy_id_v1'); } catch { return null; }
+  });
+  const [selectedEngine, setSelectedEngine] = useState<VpnEngineChoice>(() => {
+    try {
+      return localStorage.getItem(STORAGE_VPN_ENGINE_KEY) === 'sing-box' ? 'sing-box' : 'wireguard';
+    } catch { return 'wireguard'; }
+  });
+  const selectedEngineRef = useRef<VpnEngineChoice>(selectedEngine);
+  selectedEngineRef.current = selectedEngine;
 
   // Active server ID
   const [activeServerId, setActiveServerId] = useState<string>(() => {
@@ -88,15 +215,15 @@ export default function App() {
       dpiBypass: true,
       autoReconnect: true,
       bypassLanRoute: false,
-      externalIp: '104.28.212.89',
-      location: 'العراق (Baghdad)',
-      country: 'العراق',
+      externalIp: 'Not checked',
+      location: 'Not checked',
+      country: 'Iraq',
       countryFlag: '🇮🇶',
       defaultDns: '1.1.1.1',
       mtu: 1280,
       keepalive: 25,
       excludedApplications: [],
-      language: 'ar',
+      language: 'en',
     };
     try {
       const saved = localStorage.getItem(STORAGE_SETTINGS_KEY);
@@ -109,8 +236,13 @@ export default function App() {
 
   // 3. Connection State (Dedicated strictly to WireGuard)
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
+  const connectionStateRef = useRef<ConnectionState>('disconnected');
+  connectionStateRef.current = connectionState;
+  const reconnectWantedRef = useRef<boolean>(readReconnectIntent());
+  const reconnectInFlightRef = useRef(false);
 
   // 4. Telemetry State
+  const [trafficStatsAvailable, setTrafficStatsAvailable] = useState(false);
   const [telemetry, setTelemetry] = useState<NetworkTelemetry>({
     durationSeconds: 0,
     uploadBytes: 0,
@@ -132,6 +264,7 @@ export default function App() {
   // 5. Modal and Drawer states
   const [isAddServerOpen, setIsAddServerOpen] = useState(false);
   const [isServerListOpen, setIsServerListOpen] = useState(false);
+  const [isProxyProfilesOpen, setIsProxyProfilesOpen] = useState(false);
   const [isConfigExportOpen, setIsConfigExportOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -140,23 +273,115 @@ export default function App() {
   const [isLoadingIp, setIsLoadingIp] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isAppExclusionsOpen, setIsAppExclusionsOpen] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
   const [installedApplications, setInstalledApplications] = useState<InstalledApp[]>([]);
   const [cellularInfo, setCellularInfo] = useState<CellularInfo>(EMPTY_CELLULAR_INFO);
   const [isLoadingCellular, setIsLoadingCellular] = useState(false);
 
   // Active server object
   const activeServer = servers.find((s) => s.id === activeServerId) || servers[0];
+  const activeProxyProfile = proxyProfiles.find((profile) => profile.id === activeProxyId) || null;
+  const activeProxyRef = useRef<SavedProxyProfile | null>(activeProxyProfile);
+  activeProxyRef.current = activeProxyProfile;
+
+  useEffect(() => {
+    if (activeProxyId && !proxyProfiles.some((profile) => profile.id === activeProxyId)) {
+      setActiveProxyId(null);
+    }
+  }, [activeProxyId, proxyProfiles]);
+  const activeServerRef = useRef(activeServer);
+  activeServerRef.current = activeServer;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   // Probe native VPN state after the first paint so the interface opens immediately.
   useEffect(() => {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void VpnBridge.isVpnConnected().then(({ connected }) => {
-        if (!cancelled) setConnectionState(connected ? 'connected' : 'disconnected');
+        if (!cancelled) {
+          if (connected) {
+            reconnectWantedRef.current = true;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'true'); } catch { /* storage may be unavailable */ }
+            setConnectionState('connected');
+          } else {
+            setConnectionState(reconnectWantedRef.current && settings.autoReconnect ? 'reconnecting' : 'disconnected');
+          }
+        }
       }).catch(() => undefined);
     }, 0);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, []);
+
+  // Restore only a tunnel the user previously asked to keep active.
+  useEffect(() => {
+    if (!serversStorageReady || !proxyProfilesStorageReady) return;
+    if (!settings.autoReconnect) {
+      if (connectionStateRef.current === 'reconnecting') setConnectionState('disconnected');
+      return;
+    }
+    let disposed = false;
+    const monitor = async () => {
+      if (disposed || !settings.autoReconnect || !reconnectWantedRef.current || reconnectInFlightRef.current) return;
+      const current = connectionStateRef.current;
+      if (current === 'connecting' || current === 'disconnecting') return;
+
+      reconnectInFlightRef.current = true;
+      try {
+        const native = await VpnBridge.isVpnConnected();
+        if (disposed || !reconnectWantedRef.current) return;
+        if (native.connected) {
+          if (connectionStateRef.current !== 'connected') setConnectionState('connected');
+          return;
+        }
+
+        setConnectionState('reconnecting');
+        for (const wait of [1000, 2000, 4000, 8000]) {
+          await delay(wait);
+          if (disposed || !reconnectWantedRef.current) return;
+          try {
+            const server = activeServerRef.current;
+            const proxy = activeProxyRef.current;
+            const engine = selectedEngineRef.current;
+            const recovered = engine === 'sing-box' && proxy
+              ? await connectProxyProfile(proxy, settingsRef.current)
+              : engine === 'wireguard'
+                ? await connectWireGuard(server, settingsRef.current)
+                : false;
+            if (recovered) {
+              if (!settingsRef.current.autoReconnect || !reconnectWantedRef.current
+                  || activeServerRef.current.id !== server.id
+                  || (proxy?.id || null) !== (activeProxyRef.current?.id || null)) {
+                await VpnBridge.disconnect().catch(() => undefined);
+                setConnectionState('disconnected');
+                return;
+              }
+              setConnectionState('connected');
+              return;
+            }
+            await VpnBridge.disconnect().catch(() => undefined);
+          } catch (error) {
+            console.warn('Automatic VPN reconnect attempt failed:', error);
+          }
+        }
+
+        reconnectWantedRef.current = false;
+        try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+        setConnectionState('disconnected');
+      } catch (error) {
+        console.warn('VPN recovery check failed:', error);
+        if (!disposed && reconnectWantedRef.current) setConnectionState('disconnected');
+      } finally {
+        reconnectInFlightRef.current = false;
+      }
+    };
+
+    const timer = window.setInterval(() => { void monitor(); }, 5000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [settings.autoReconnect, activeServerId, serversStorageReady, proxyProfilesStorageReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,14 +408,84 @@ export default function App() {
     return () => { cancelled = true; window.clearTimeout(initialTimer); window.clearInterval(timer); };
   }, []);
 
-  // Save servers to localStorage
+  // WireGuard private keys are encrypted with the Android Keystore. Migrate
+  // existing plaintext localStorage data once and remove it only after success.
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const secure = await VpnBridge.loadSecureWireGuardServers();
+        let rawServers: unknown;
+        if (secure.serversJson) {
+          rawServers = JSON.parse(secure.serversJson);
+        } else {
+          const legacy = localStorage.getItem(STORAGE_SERVERS_KEY);
+          rawServers = legacy ? JSON.parse(legacy) : getInitialServers();
+          const normalized = normalizeStoredServers(rawServers) || getInitialServers();
+          await VpnBridge.saveSecureWireGuardServers({ serversJson: JSON.stringify(normalized) });
+        }
+        const restored = normalizeStoredServers(rawServers) || getInitialServers();
+        if (!cancelled) {
+          setServers(restored);
+          setServersStorageReady(true);
+          try { localStorage.removeItem(STORAGE_SERVERS_KEY); } catch { /* legacy key may be unavailable */ }
+        }
+      } catch (error) {
+        console.error('Secure WireGuard storage could not be opened; existing data was not overwritten.', error);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!serversStorageReady) return;
+    void VpnBridge.saveSecureWireGuardServers({ serversJson: JSON.stringify(servers) })
+      .catch((error) => console.error('Secure WireGuard server save failed:', error));
+  }, [servers, serversStorageReady]);
+
+  // Load credentials from Android Keystore-backed storage. Migrate legacy
+  // WebView localStorage once, then remove the plaintext copy only after save succeeds.
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const secure = await VpnBridge.loadSecureProxyProfiles();
+        let rawProfiles: unknown;
+        if (secure.profilesJson) {
+          rawProfiles = JSON.parse(secure.profilesJson);
+        } else {
+          const legacy = localStorage.getItem(STORAGE_PROXY_PROFILES_KEY);
+          rawProfiles = legacy ? JSON.parse(legacy) : [];
+          const migrated = normalizeStoredProxyProfiles(rawProfiles);
+          await VpnBridge.saveSecureProxyProfiles({ profilesJson: JSON.stringify(migrated) });
+        }
+        const restored = normalizeStoredProxyProfiles(rawProfiles);
+        if (!cancelled) {
+          setProxyProfiles(restored);
+          setProxyProfilesStorageReady(true);
+          try { localStorage.removeItem(STORAGE_PROXY_PROFILES_KEY); } catch { /* legacy key may be unavailable */ }
+        }
+      } catch (error) {
+        console.error('Secure proxy profile storage could not be opened; existing data was not overwritten.', error);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!proxyProfilesStorageReady) return;
+    void VpnBridge.saveSecureProxyProfiles({ profilesJson: JSON.stringify(proxyProfiles) })
+      .catch((error) => console.error('Secure proxy profile save failed:', error));
+  }, [proxyProfiles, proxyProfilesStorageReady]);
+
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_SERVERS_KEY, JSON.stringify(servers));
-    } catch (e) {
-      console.warn('Storage save failed:', e);
-    }
-  }, [servers]);
+      if (activeProxyId) localStorage.setItem('nexalink_active_proxy_id_v1', activeProxyId);
+      else localStorage.removeItem('nexalink_active_proxy_id_v1');
+    } catch { /* storage may be unavailable */ }
+  }, [activeProxyId]);
 
   // Save active server ID
   useEffect(() => {
@@ -296,7 +591,12 @@ export default function App() {
         try {
           const traffic = await VpnBridge.getTrafficStats();
           const capturedAt = performance.now();
-          if (disposed || !traffic.connected) return;
+          if (disposed) return;
+          if (!traffic.connected || !traffic.available) {
+            setTrafficStatsAvailable(false);
+            return;
+          }
+          setTrafficStatsAvailable(true);
           const previous = previousTrafficSampleRef.current;
           const elapsedSeconds = previous ? (capturedAt - previous.capturedAt) / 1000 : 0;
           const downloadDelta = previous ? traffic.downloadBytes - previous.downloadBytes : 0;
@@ -367,6 +667,7 @@ export default function App() {
       if (telemetryPollTimerRef.current) clearInterval(telemetryPollTimerRef.current);
       if (geoPollTimerRef.current) clearInterval(geoPollTimerRef.current);
       previousTrafficSampleRef.current = null;
+      setTrafficStatsAvailable(false);
     }
 
     return () => {
@@ -379,7 +680,10 @@ export default function App() {
 
   // Handle Power button toggle with Real Android VPN Service
   const handleToggleConnection = async () => {
-    if (connectionState === 'connected') {
+    if (!serversStorageReady || !proxyProfilesStorageReady) return;
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       setConnectionState('disconnecting');
       try {
         await VpnBridge.disconnect();
@@ -391,7 +695,10 @@ export default function App() {
         setConnectionState('disconnected');
       }, 500);
     } else if (connectionState === 'disconnected') {
+      reconnectWantedRef.current = true;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'true'); } catch { /* storage may be unavailable */ }
       previousTrafficSampleRef.current = null;
+      setTrafficStatsAvailable(false);
       setConnectionState('connecting');
       setTelemetry({
         durationSeconds: 0,
@@ -402,30 +709,26 @@ export default function App() {
         pingMs: 0,
       });
       try {
-        await VpnBridge.connect({
-          serverName: activeServer.name || 'OODI PROXY SELOOM1',
-          endpoint: activeServer.endpoint,
-          dns: Array.isArray(activeServer.dns) ? activeServer.dns.join(',') : activeServer.dns,
-          address: Array.isArray(activeServer.addresses) ? activeServer.addresses.join(',') : (activeServer.addresses || '172.16.0.2/32'),
-          privateKey: activeServer.privateKey,
-          publicKey: activeServer.publicKey,
-          allowedIPs: Array.isArray(activeServer.allowedIPs) ? activeServer.allowedIPs.join(',') : '0.0.0.0/0',
-          bypassLanRoute: settings.bypassLanRoute,
-          excludedApplications: settings.excludedApplications,
-        });
-        // The native service starts asynchronously. Do not mark the UI as connected
-        // until the WireGuard backend reports that the tunnel is actually UP.
-        let connected = false;
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          const state = await VpnBridge.isVpnConnected();
-          if (state.connected) {
-            connected = true;
-            break;
-          }
+        if (selectedEngine === 'sing-box' && !activeProxyProfile) {
+          setConnectionState('disconnected');
+          setIsProxyProfilesOpen(true);
+          reconnectWantedRef.current = false;
+          try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+          return;
         }
-        setConnectionState(connected ? 'connected' : 'disconnected');
+        const connected = selectedEngine === 'sing-box'
+          ? await connectProxyProfile(activeProxyProfile!, settings)
+          : await connectWireGuard(activeServer, settings);
+        if (connected) {
+          setConnectionState('connected');
+        } else {
+          reconnectWantedRef.current = false;
+          try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+          setConnectionState('disconnected');
+        }
       } catch (err) {
+        reconnectWantedRef.current = false;
+        try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
         console.error('VPN permission or connection error:', err);
         setConnectionState('disconnected');
       }
@@ -436,7 +739,10 @@ export default function App() {
   const handleAddServer = (newServer: WireguardServer, activateImmediately: boolean) => {
     setServers((prev) => [newServer, ...prev]);
     if (activateImmediately) {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       setActiveServerId(newServer.id);
+      setActiveProxyId(null);
       // Selecting a server must not claim a native VPN connection. The tunnel
       // is started only by the power button after the user grants permission.
       setConnectionState('disconnected');
@@ -445,9 +751,15 @@ export default function App() {
 
   // Select server handler
   const handleSelectServer = (server: WireguardServer) => {
+    setSelectedEngine('wireguard');
+    selectedEngineRef.current = 'wireguard';
+    try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'wireguard'); } catch { /* storage may be unavailable */ }
     setActiveServerId(server.id);
+    setActiveProxyId(null);
     setIsServerListOpen(false);
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       // Do not swap credentials underneath a live WireGuard tunnel.
       void VpnBridge.disconnect().catch(() => undefined);
       setConnectionState('disconnected');
@@ -487,9 +799,116 @@ export default function App() {
 
   // Reset to default servers
   const handleResetServers = () => {
+    reconnectWantedRef.current = false;
+    try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
     const defaults = getInitialServers();
     setServers(defaults);
     setActiveServerId(defaults[0].id);
+    setActiveProxyId(null);
+  };
+
+  const handleExportBackup = async (password: string) => {
+    const payload = {
+      formatVersion: 1,
+      createdAt: new Date().toISOString(),
+      servers,
+      proxyProfiles,
+      settings,
+      activeServerId,
+      activeProxyId,
+    };
+    const blob = await encryptBackup(payload, password);
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'nexalink-backup.json';
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = async (file: File, password: string) => {
+    if (connectionState !== 'disconnected') {
+      throw new Error('Disconnect the VPN before restoring a backup.');
+    }
+    const payload = await decryptBackup(file, password) as {
+      formatVersion?: number;
+      servers?: unknown;
+      proxyProfiles?: unknown;
+      settings?: unknown;
+      activeServerId?: unknown;
+      activeProxyId?: unknown;
+    };
+    if (payload.formatVersion !== 1 || !Array.isArray(payload.servers) ||
+        payload.servers.length === 0 || payload.servers.length > 100) {
+      throw new Error('The backup payload is incomplete, unsupported, or contains too many servers (maximum 100).');
+    }
+    const importedServers = payload.servers.filter(isValidBackupServer);
+    if (importedServers.length !== payload.servers.length) {
+      throw new Error('The backup contains an invalid WireGuard server entry.');
+    }
+    if (new Set(importedServers.map((server) => server.id)).size !== importedServers.length) {
+      throw new Error('The backup contains duplicate server IDs.');
+    }
+    const importedProxyProfiles: SavedProxyProfile[] = [];
+    if (payload.proxyProfiles !== undefined) {
+      if (!Array.isArray(payload.proxyProfiles) || payload.proxyProfiles.length > 100) {
+        throw new Error('The backup contains an invalid proxy profile list (maximum 100).');
+      }
+      const seenProxyIds = new Set<string>();
+      for (const entry of payload.proxyProfiles) {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error('The backup contains an invalid proxy profile entry.');
+        }
+        const candidate = entry as Partial<SavedProxyProfile>;
+        if (typeof candidate.id !== 'string' || candidate.id.length < 1 || candidate.id.length > 128
+            || seenProxyIds.has(candidate.id)
+            || typeof candidate.link !== 'string' || candidate.link.length < 1 || candidate.link.length > 16384
+            || !['vless', 'vmess', 'trojan'].includes(candidate.protocol || '')
+            || !Number.isFinite(candidate.createdAt)) {
+          throw new Error('The backup contains an invalid or duplicate proxy profile.');
+        }
+        // Re-parse each credential-bearing URI in the native parser. Never trust
+        // display metadata or config JSON supplied by an imported backup.
+        const parsed = await VpnBridge.parseProxyProfile({ link: candidate.link });
+        if (parsed.protocol !== candidate.protocol) {
+          throw new Error('A proxy profile protocol does not match its share link.');
+        }
+        importedProxyProfiles.push({
+          id: candidate.id,
+          link: candidate.link,
+          createdAt: Number(candidate.createdAt),
+          protocol: parsed.protocol,
+          name: parsed.name,
+          server: parsed.server,
+          port: parsed.port,
+        });
+        seenProxyIds.add(candidate.id);
+      }
+    }
+    const importedSettings = sanitizeBackupSettings(payload.settings, settings);
+    const nextActiveId = typeof payload.activeServerId === 'string'
+      && importedServers.some((server) => server.id === payload.activeServerId)
+      ? payload.activeServerId
+      : importedServers[0].id;
+    const nextActiveProxyId = typeof payload.activeProxyId === 'string'
+      && importedProxyProfiles.some((profile) => profile.id === payload.activeProxyId)
+      ? payload.activeProxyId
+      : null;
+    setServers(importedServers);
+    setProxyProfiles(importedProxyProfiles);
+    setActiveProxyId(nextActiveProxyId);
+    setSettings(importedSettings);
+    reconnectWantedRef.current = false;
+    try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+    setActiveServerId(nextActiveId);
+    setTelemetry({
+      durationSeconds: 0,
+      uploadBytes: 0,
+      downloadBytes: 0,
+      uploadSpeedKBs: 0,
+      downloadSpeedKBs: 0,
+      pingMs: 0,
+    });
   };
 
   // Open config export for a specific server
@@ -504,11 +923,13 @@ export default function App() {
     let balyServer = servers.find((s) => s.name.toLowerCase().includes('bally') || s.name.toLowerCase().includes('بلي') || s.rawUri?.includes('BALLY'));
     if (!balyServer) {
       balyServer = parseWireguardUri(USER_DEFAULT_URI);
-      balyServer.name = 'SELOOM1-WARP BALLY (خطوط أودي)';
+      balyServer.name = 'NexaLink - Baly Mode';
       setServers((prev) => [balyServer!, ...prev]);
     }
     setActiveServerId(balyServer.id);
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       void VpnBridge.disconnect().catch(() => undefined);
       setConnectionState('disconnected');
     }
@@ -517,12 +938,12 @@ export default function App() {
   const isBalyActive = activeServer.name.toLowerCase().includes('bally') || activeServer.name.toLowerCase().includes('بلي') || activeServer.rawUri?.includes('BALLY');
 
   return (
-    <div className="relative h-screen max-h-screen w-full bg-[#060814] text-slate-100 flex flex-col items-center justify-between overflow-hidden selection:bg-cyan-500 selection:text-black">
-      <div className="fixed inset-0 bg-[url('/assets/oodi-user-background.jpg')] bg-cover bg-center bg-no-repeat" aria-hidden="true" />
-      <div className="fixed inset-0 bg-[#030014]/35" aria-hidden="true" />
+    <div className="nexalink-app relative min-h-[100dvh] w-full text-slate-100 flex flex-col items-center overflow-x-hidden selection:bg-cyan-400 selection:text-slate-950" dir="ltr">
+      <div className="nexalink-ambient" aria-hidden="true" />
+      <div className="nexalink-noise" aria-hidden="true" />
 
       {/* Main Single-Screen Full-View Frame - No Scrolling Needed */}
-      <main className="relative w-full max-w-md mx-auto h-full flex flex-col justify-between px-3.5 py-1 z-10">
+      <main className="nexalink-shell relative w-full max-w-lg mx-auto min-h-[100dvh] flex flex-col justify-start gap-4 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] z-10">
         {/* Top Header & Mobile Status Bar */}
         <Header
           onOpenMenu={() => setIsMenuOpen(true)}
@@ -531,10 +952,53 @@ export default function App() {
         />
 
         {/* Central Power Switch button and status pill */}
+        <ProtocolSelector
+          selectedEngine={selectedEngine}
+          disabled={connectionState === 'connecting' || connectionState === 'disconnecting' || connectionState === 'reconnecting'}
+          onSelectEngine={(engine) => {
+            if (engine === selectedEngine || connectionStateRef.current === 'connecting'
+                || connectionStateRef.current === 'disconnecting' || connectionStateRef.current === 'reconnecting') return;
+            const previousEngine = selectedEngineRef.current;
+            reconnectWantedRef.current = false;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+            const applyEngine = () => {
+              selectedEngineRef.current = engine;
+              setSelectedEngine(engine);
+              try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, engine); } catch { /* storage may be unavailable */ }
+              if (engine === 'sing-box' && !activeProxyRef.current) setIsProxyProfilesOpen(true);
+            };
+            if (connectionStateRef.current === 'disconnected') {
+              applyEngine();
+              return;
+            }
+            setConnectionState('disconnecting');
+            void (async () => {
+              try {
+                await VpnBridge.disconnect();
+                let stopped = false;
+                for (let attempt = 0; attempt < 40; attempt += 1) {
+                  await delay(250);
+                  if (!(await VpnBridge.isVpnConnected()).connected) { stopped = true; break; }
+                }
+                if (!stopped) throw new Error('The current VPN engine did not stop; keeping the previous engine selected.');
+                saveConnectionLog(telemetryRef.current);
+                setConnectionState('disconnected');
+                applyEngine();
+              } catch (error) {
+                console.error('Safe VPN engine switch failed:', error);
+                selectedEngineRef.current = previousEngine;
+                setSelectedEngine(previousEngine);
+                try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, previousEngine); } catch { /* storage may be unavailable */ }
+                setConnectionState('connected');
+              }
+            })();
+          }}
+        />
+
         <PowerSwitch
           connectionState={connectionState}
           onToggle={handleToggleConnection}
-          serverName={activeServer.name}
+          serverName={activeProxyProfile?.name || activeServer.name}
         />
 
         {/* Baly App Oodi Integration Card */}
@@ -544,12 +1008,13 @@ export default function App() {
           <StatsCard
             telemetry={telemetry}
             isConnected={connectionState === 'connected'}
+            trafficAvailable={trafficStatsAvailable}
             onRefreshPing={refreshRealPing}
             isPinging={isPinging}
           />
           <DeviceInfoBar
             externalIp={settings.externalIp}
-            country={settings.country || 'العراق'}
+            country={settings.country || 'Iraq'}
             countryFlag={settings.countryFlag || '🇮🇶'}
             isConnected={connectionState === 'connected'}
             totalBytes={telemetry.uploadBytes + telemetry.downloadBytes}
@@ -569,8 +1034,13 @@ export default function App() {
 
         {/* Server & Network Controls Group */}
         <div className="flex flex-col gap-1.5 w-full my-auto">
-          <button type="button" onClick={() => setIsAppExclusionsOpen(true)} className="-translate-y-1 mb-0.5 flex w-full items-center justify-between rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/70 px-3 py-2 text-[10px] font-bold text-fuchsia-300 shadow-lg shadow-fuchsia-950/20 hover:bg-fuchsia-900/70 transition-colors" dir="rtl">
-            <span className="flex items-center gap-2"><ShieldOff className="h-4 w-4 text-fuchsia-400" /><span>استثناء التطبيقات من VPN</span></span>
+          <button type="button" onClick={() => setIsProxyProfilesOpen(true)}
+            className="-translate-y-1 mb-0.5 flex w-full items-center justify-between rounded-xl border border-violet-500/30 bg-violet-950/60 px-3 py-2 text-[10px] font-bold text-violet-200 hover:bg-violet-900/70 transition-colors">
+            <span className="flex items-center gap-2"><span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-violet-300 text-[9px]">↗</span><span>{activeProxyProfile ? activeProxyProfile.name : 'Add or select a proxy profile'}</span></span>
+            <span className="rounded-full bg-violet-400/20 px-2 py-0.5 text-[9px] font-black text-violet-200">VLESS / VMESS / TROJAN</span>
+          </button>
+          <button type="button" onClick={() => setIsAppExclusionsOpen(true)} className="-translate-y-1 mb-0.5 flex w-full items-center justify-between rounded-xl border border-fuchsia-500/30 bg-fuchsia-950/70 px-3 py-2 text-[10px] font-bold text-fuchsia-300 shadow-lg shadow-fuchsia-950/20 hover:bg-fuchsia-900/70 transition-colors" dir="ltr">
+            <span className="flex items-center gap-2"><ShieldOff className="h-4 w-4 text-fuchsia-400" /><span>Exclude Apps from VPN</span></span>
             <span className="rounded-full bg-fuchsia-400/80 px-2 py-0.5 text-[9px] font-black text-slate-950">{settings.excludedApplications.length}</span>
           </button>
           {/* Telegram Channel & Developer Bar */}
@@ -601,6 +1071,50 @@ export default function App() {
         isPinging={isPinging}
       />
 
+      <ProxyProfilesModal
+        isOpen={isProxyProfilesOpen}
+        profiles={proxyProfiles}
+        activeProfileId={activeProxyId}
+        onClose={() => setIsProxyProfilesOpen(false)}
+        onSave={(profile) => {
+          setProxyProfiles((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
+          setActiveProxyId(profile.id);
+          selectedEngineRef.current = 'sing-box';
+          setSelectedEngine('sing-box');
+          try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'sing-box'); } catch { /* storage may be unavailable */ }
+          if (connectionStateRef.current !== 'disconnected') {
+            reconnectWantedRef.current = false;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+            void VpnBridge.disconnect().catch(() => undefined);
+            setConnectionState('disconnected');
+          }
+        }}
+        onSelect={(profile) => {
+          setActiveProxyId(profile.id);
+          selectedEngineRef.current = 'sing-box';
+          setSelectedEngine('sing-box');
+          try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'sing-box'); } catch { /* storage may be unavailable */ }
+          if (connectionStateRef.current === 'connected' || connectionStateRef.current === 'reconnecting') {
+            reconnectWantedRef.current = false;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+            void VpnBridge.disconnect().catch(() => undefined);
+            setConnectionState('disconnected');
+          }
+        }}
+        onDelete={(id) => {
+          setProxyProfiles((current) => current.filter((profile) => profile.id !== id));
+          if (activeProxyId === id) {
+            setActiveProxyId(null);
+            if (connectionStateRef.current === 'connected' || connectionStateRef.current === 'reconnecting') {
+              reconnectWantedRef.current = false;
+              try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+              void VpnBridge.disconnect().catch(() => undefined);
+              setConnectionState('disconnected');
+            }
+          }
+        }}
+      />
+
       <ConfigExportModal
         isOpen={isConfigExportOpen}
         onClose={() => setIsConfigExportOpen(false)}
@@ -613,6 +1127,9 @@ export default function App() {
         settings={settings}
         onSaveSettings={(newSettings) => setSettings(newSettings)}
         onResetServers={handleResetServers}
+        onExportBackup={handleExportBackup}
+        onImportBackup={handleImportBackup}
+        onOpenVpnSettings={() => { void VpnBridge.openVpnSettings().catch((error) => console.warn('Could not open Android VPN settings:', error)); }}
       />
 
       <ConnectionHistoryModal
@@ -627,8 +1144,10 @@ export default function App() {
         onClose={() => setIsMenuOpen(false)}
         onOpenServers={() => setIsServerListOpen(true)}
         onOpenAddServer={() => setIsAddServerOpen(true)}
+        onOpenProxyProfiles={() => setIsProxyProfilesOpen(true)}
         onOpenExport={() => handleOpenExport(activeServer)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
         onOpenAppExclusions={() => setIsAppExclusionsOpen(true)}
         onOpenShizzi={() => {
           void ShizziBridge.open().catch(() => {
@@ -642,6 +1161,21 @@ export default function App() {
         }}
         excludedAppsCount={settings.excludedApplications.length}
         isConnected={connectionState === 'connected'}
+      />
+
+      <DiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        connectionState={connectionState}
+        activeServerName={activeProxyProfile?.name || activeServer.name}
+        endpoint={activeProxyProfile ? `${activeProxyProfile.server}:${activeProxyProfile.port}` : activeServer.endpoint}
+        serverCount={servers.length}
+        telemetry={telemetry}
+        mtu={settings.mtu}
+        keepalive={settings.keepalive}
+        excludedAppsCount={settings.excludedApplications.length}
+        bypassLanRoute={settings.bypassLanRoute}
+        autoReconnect={settings.autoReconnect}
       />
 
       <AppExclusionsModal

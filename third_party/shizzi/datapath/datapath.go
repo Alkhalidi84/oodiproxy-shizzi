@@ -9,6 +9,7 @@ package datapath
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
@@ -28,8 +29,10 @@ const nicID tcpip.NICID = 1
 // gVisor types: gomobile carries only a narrow set across JNI, so the Kotlin
 // side sees a handle it can start and stop.
 type Session struct {
-	stack   *stack.Stack
-	binding *networkBinding
+	stack     *stack.Stack
+	binding   *networkBinding
+	counters  *clientCounters
+	sessionID int64
 }
 
 // Start builds a netstack over tunFD, already open, and attaches it to the TUN.
@@ -52,9 +55,15 @@ func Start(tunFD int, mtu int) (*Session, error) {
 		},
 	})
 
+	// TestNetworkManager.createTunInterface returns a Linux TUN fd, not
+	// an AF_PACKET socket. Tell fdbased explicitly so it does not probe the
+	// descriptor with socket-specific discovery before attaching the endpoint.
 	endpoint, err := fdbased.New(&fdbased.Options{
-		FDs: []int{tunFD},
-		MTU: uint32(mtu),
+		FDs:             []int{tunFD},
+		MTU:             uint32(mtu),
+		EthernetHeader:  false,
+		IsPacketSocket:  []bool{false},
+		PacketDispatchMode: fdbased.Readv,
 	})
 	if err != nil {
 		netStack.Close()
@@ -77,12 +86,13 @@ func Start(tunFD int, mtu int) (*Session, error) {
 	})
 
 	binding := &networkBinding{}
+	counters := newClientCounters()
 	installForwarders(netStack, &net.Dialer{
 		Timeout: dialTimeout,
 		Control: binding.control,
-	})
+	}, counters)
 
-	return &Session{stack: netStack, binding: binding}, nil
+	return &Session{stack: netStack, binding: binding, counters: counters, sessionID: time.Now().UnixNano()}, nil
 }
 
 // SetNetwork pins every subsequent dial to a handle from
@@ -100,6 +110,14 @@ func (s *Session) SetNetwork(handle int64) {
 		return
 	}
 	s.binding.set(uint64(handle))
+}
+
+// StatsJSON returns per-client userspace payload byte counters, keyed by the
+// source IP observed at the TUN ingress. Upload is client-to-internet; download
+// is internet-to-client. These are relay payload bytes, not Ethernet/IP overhead.
+func (s *Session) StatsJSON() string {
+	if s == nil || s.counters == nil { return `{"clients":[]}` }
+	return s.counters.statsJSON(s.sessionID)
 }
 
 // Stop tears the netstack down. It does not close the TUN fd.

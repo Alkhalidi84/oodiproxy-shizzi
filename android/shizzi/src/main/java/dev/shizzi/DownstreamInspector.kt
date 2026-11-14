@@ -7,6 +7,12 @@ class DownstreamInspector(private val inspector: UpstreamInspector = UpstreamIns
 
     private var loggedCount = 0
 
+    fun isTethered(): Boolean? {
+        val observation = inspector.observe()
+        if (observation.didTimeout) return null
+        return TETHERED_STATE_PATTERN.containsMatchIn(observation.rawOutput)
+    }
+
     fun findTetheredDownstream(): String? {
         val observation = inspector.observe()
         if (observation.didTimeout) return "dumpsys tethering timed out; downstream state unknown"

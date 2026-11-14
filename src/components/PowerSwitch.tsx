@@ -14,6 +14,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
 }) => {
   const isConnected = connectionState === 'connected';
   const isConnecting = connectionState === 'connecting' || connectionState === 'disconnecting';
+  const isReconnecting = connectionState === 'reconnecting';
 
   return (
     <div className="relative flex flex-col items-center justify-center my-0 z-20 select-none">
@@ -22,7 +23,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         className={`absolute w-40 h-40 rounded-full blur-xl transition-all duration-700 pointer-events-none ${
           isConnected
             ? 'bg-gradient-to-tr from-cyan-500/35 via-blue-500/25 to-fuchsia-500/35 scale-105'
-            : isConnecting
+             : isConnecting || isReconnecting
             ? 'bg-cyan-500/20 animate-pulse'
             : 'bg-slate-700/10 scale-90'
         }`}
@@ -33,9 +34,9 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         onClick={onToggle}
         disabled={isConnecting}
         id="btn-vpn-power-toggle"
-        aria-label={isConnected ? "قطع الاتصال" : "الاتصال بالخادم"}
+        aria-label={isConnected || isReconnecting ? "Disconnect" : "Connect to Server"}
         className={`relative w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center transition-transform active:scale-95 group focus:outline-none ${
-          isConnecting ? 'cursor-wait' : 'cursor-pointer'
+          isConnecting || isReconnecting ? 'cursor-wait' : 'cursor-pointer'
         }`}
       >
         {/* Animated Gradient Border Ring */}
@@ -43,7 +44,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
           className={`absolute inset-0 rounded-full p-[3px] transition-all duration-700 ${
             isConnected
               ? 'bg-gradient-to-tr from-cyan-400 via-blue-500 to-fuchsia-500 shadow-[0_0_25px_rgba(6,182,212,0.5)]'
-              : isConnecting
+              : isConnecting || isReconnecting
               ? 'bg-gradient-to-tr from-cyan-400 to-blue-600 animate-spin'
               : 'bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 shadow-[0_0_12px_rgba(0,0,0,0.5)]'
           }`}
@@ -59,7 +60,7 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
             )}
 
             {/* Power Icon */}
-            {isConnecting ? (
+            {isConnecting || isReconnecting ? (
               <Loader2 className="w-9 h-9 text-cyan-400 animate-spin" />
             ) : (
               <Power 
@@ -75,13 +76,13 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
         </div>
       </button>
 
-      {/* Status Pill Badge ("متصل" / "غير متصل") */}
+      {/* Status Pill Badge ("Connected" / "Disconnected") */}
       <div className="mt-1.5 flex flex-col items-center gap-0.5">
         <div 
           className={`px-6 py-1 rounded-full flex items-center gap-2 transition-all duration-500 shadow-md border ${
             isConnected
               ? 'bg-gradient-to-r from-cyan-950/80 via-blue-950/90 to-fuchsia-950/80 border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
-              : isConnecting
+              : isConnecting || isReconnecting
               ? 'bg-slate-900/80 border-cyan-500/40 text-cyan-300'
               : 'bg-slate-900/80 border-slate-800 text-slate-400'
           }`}
@@ -90,23 +91,25 @@ export const PowerSwitch: React.FC<PowerSwitchProps> = ({
             className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
               isConnected
                 ? 'bg-emerald-400 shadow-[0_0_8px_#34d399] animate-pulse'
-                : isConnecting
+                : isConnecting || isReconnecting
                 ? 'bg-cyan-400 animate-ping'
                 : 'bg-rose-500 shadow-[0_0_6px_#f43f5e]'
             }`} 
           />
           <span className="text-sm font-bold tracking-wide text-white">
-            {isConnected ? 'متصل' : isConnecting ? 'جارٍ الاتصال...' : 'غير متصل'}
+            {isConnected ? 'Connected' : isReconnecting ? 'Reconnecting...' : isConnecting ? 'Connecting...' : 'Disconnected'}
           </span>
         </div>
 
         {/* Subtitle status note */}
         <p className="text-[11px] text-slate-300 font-medium tracking-tight text-center">
           {isConnected 
-            ? 'الإنترنت يعمل بشكل طبيعي' 
-            : isConnecting 
-            ? 'جاري إعداد نفق WireGuard المشفر...' 
-            : 'اضغط على الزر لتشغيل خادم WireGuard'}
+            ? 'Internet is working normally' 
+            : isReconnecting
+            ? 'Restoring your secure VPN connection...'
+            : isConnecting
+            ? 'Establishing secure VPN connection...'
+            : 'Tap the button to connect using the selected VPN engine'}
         </p>
       </div>
     </div>

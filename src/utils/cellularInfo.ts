@@ -39,10 +39,10 @@ export async function readCellularInfo(): Promise<CellularInfo> {
 export default CellularInfoBridge;
 
 export function getSignalLabel(level: number | null): string {
-  if (level === null) return 'غير متاح';
-  if (level >= 4) return 'ممتازة';
-  if (level >= 3) return 'جيدة';
-  if (level >= 2) return 'متوسطة';
-  if (level >= 1) return 'ضعيفة';
-  return 'لا توجد إشارة';
+  if (level === null) return 'Unavailable';
+  if (level >= 4) return 'Excellent';
+  if (level >= 3) return 'Good';
+  if (level >= 2) return 'Fair';
+  if (level >= 1) return 'Weak';
+  return 'No Signal';
 }

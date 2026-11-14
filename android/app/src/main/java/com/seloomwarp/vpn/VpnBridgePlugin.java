@@ -6,10 +6,19 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.VpnService;
 import android.os.Build;
+import android.provider.Settings;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
 import android.util.Base64;
+import android.content.SharedPreferences;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import java.security.KeyStore;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -28,10 +37,139 @@ public class VpnBridgePlugin extends Plugin {
     private PluginCall pendingCall;
     private Intent pendingIntent;
 
+    /**
+     * Parses a V2Ray share URI into a Sing-box profile. This is deliberately
+     * separate from connect(): parsing a profile does not claim that a tunnel
+     * is running or bypass Android's VPN permission/lifecycle requirements.
+     */
+    @PluginMethod
+    public void parseProxyProfile(PluginCall call) {
+        try {
+            String link = call.getString("link", "");
+            SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(link);
+            JSObject result = new JSObject();
+            result.put("protocol", profile.protocol);
+            result.put("name", profile.name);
+            result.put("server", profile.server);
+            result.put("port", profile.port);
+            result.put("configJson", profile.configJson);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to parse proxy profile: " + error.getMessage(),
+                    error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    private static final String SECURE_PROFILE_PREFS = "nexalink_secure_profiles";
+    private static final String SECURE_PROFILE_KEY = "encrypted_profiles";
+    private static final String KEYSTORE_ALIAS = "NexaLinkProxyProfilesV1";
+
+    /** Stores imported proxy links encrypted with an Android Keystore AES-GCM key. */
+    @PluginMethod
+    public void saveSecureProxyProfiles(PluginCall call) {
+        try {
+            String json = call.getString("profilesJson", "[]");
+            if (json == null || json.length() > 2_000_000) throw new IllegalArgumentException("Proxy profile data is too large");
+            new org.json.JSONArray(json);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateProfileKey());
+            byte[] encrypted = cipher.doFinal(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            byte[] payload = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, payload, 0, iv.length);
+            System.arraycopy(encrypted, 0, payload, iv.length, encrypted.length);
+            boolean saved = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE)
+                    .edit().putString(SECURE_PROFILE_KEY, Base64.encodeToString(payload, Base64.NO_WRAP)).commit();
+            if (!saved) throw new IllegalStateException("Unable to persist encrypted proxy profiles");
+            call.resolve();
+        } catch (Throwable error) {
+            call.reject("Unable to securely save proxy profiles: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    /** Loads encrypted proxy links; plaintext is returned only to the in-memory app bridge. */
+    @PluginMethod
+    public void loadSecureProxyProfiles(PluginCall call) {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE);
+            String encoded = prefs.getString(SECURE_PROFILE_KEY, null);
+            JSObject result = new JSObject();
+            if (encoded == null || encoded.isEmpty()) { result.put("profilesJson", ""); call.resolve(result); return; }
+            byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
+            if (payload.length <= 28) throw new IllegalStateException("Encrypted profile data is truncated");
+            byte[] iv = java.util.Arrays.copyOfRange(payload, 0, 12);
+            byte[] encrypted = java.util.Arrays.copyOfRange(payload, 12, payload.length);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateProfileKey(), new GCMParameterSpec(128, iv));
+            String json = new String(cipher.doFinal(encrypted), java.nio.charset.StandardCharsets.UTF_8);
+            new org.json.JSONArray(json);
+            result.put("profilesJson", json);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to decrypt saved proxy profiles: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    /** Stores WireGuard peers, including private keys, in the same Keystore-protected vault. */
+    @PluginMethod
+    public void saveSecureWireGuardServers(PluginCall call) {
+        try {
+            String json = call.getString("serversJson", "[]");
+            if (json == null || json.length() > 2_000_000) throw new IllegalArgumentException("WireGuard server data is too large");
+            new org.json.JSONArray(json);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateProfileKey());
+            byte[] encrypted = cipher.doFinal(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            byte[] payload = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, payload, 0, iv.length);
+            System.arraycopy(encrypted, 0, payload, iv.length, encrypted.length);
+            boolean saved = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE)
+                    .edit().putString("encrypted_wireguard_servers", Base64.encodeToString(payload, Base64.NO_WRAP)).commit();
+            if (!saved) throw new IllegalStateException("Unable to persist encrypted WireGuard servers");
+            call.resolve();
+        } catch (Throwable error) {
+            call.reject("Unable to securely save WireGuard servers: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    @PluginMethod
+    public void loadSecureWireGuardServers(PluginCall call) {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE);
+            String encoded = prefs.getString("encrypted_wireguard_servers", null);
+            JSObject result = new JSObject();
+            if (encoded == null || encoded.isEmpty()) { result.put("serversJson", ""); call.resolve(result); return; }
+            byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
+            if (payload.length <= 28) throw new IllegalStateException("Encrypted WireGuard data is truncated");
+            byte[] iv = java.util.Arrays.copyOfRange(payload, 0, 12);
+            byte[] encrypted = java.util.Arrays.copyOfRange(payload, 12, payload.length);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateProfileKey(), new GCMParameterSpec(128, iv));
+            String json = new String(cipher.doFinal(encrypted), java.nio.charset.StandardCharsets.UTF_8);
+            new org.json.JSONArray(json);
+            result.put("serversJson", json);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to decrypt saved WireGuard servers: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+    private synchronized SecretKey getOrCreateProfileKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        java.security.Key existing = keyStore.getKey(KEYSTORE_ALIAS, null);
+        if (existing instanceof SecretKey) return (SecretKey) existing;
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        generator.init(new KeyGenParameterSpec.Builder(KEYSTORE_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true).build());
+        return generator.generateKey();
+    }
     @PluginMethod
     public void isVpnConnected(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("connected", SeloomVpnService.isConnected());
+        result.put("connected", AlkhalidiVpnService.isConnected());
         call.resolve(result);
     }
 
@@ -41,12 +179,13 @@ public class VpnBridgePlugin extends Plugin {
      */
     @PluginMethod
     public void getTrafficStats(PluginCall call) {
-        SeloomVpnService.TrafficSnapshot snapshot = SeloomVpnService.getTrafficSnapshot();
+        AlkhalidiVpnService.TrafficSnapshot snapshot = AlkhalidiVpnService.getTrafficSnapshot();
         JSObject result = new JSObject();
         result.put("connected", snapshot.connected);
         result.put("downloadBytes", snapshot.downloadBytes);
         result.put("uploadBytes", snapshot.uploadBytes);
         result.put("latestHandshakeEpochMs", snapshot.latestHandshakeEpochMs);
+        result.put("available", snapshot.available);
         call.resolve(result);
     }
 
@@ -77,6 +216,59 @@ public class VpnBridgePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void openVpnSettings(PluginCall call) {
+        try {
+            Intent settings = new Intent(Settings.ACTION_VPN_SETTINGS);
+            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(settings);
+            call.resolve();
+        } catch (RuntimeException error) {
+            call.reject("Unable to open Android VPN settings: " + error.getMessage(), error);
+        }
+    }
+
+    /**
+     * Requests an Android VPN permission flow, then starts Sing-box in the
+     * same AlkhalidiVpnService used by WireGuard. Profile parsing is validated
+     * before any service or TUN resource is created.
+     */
+    @PluginMethod
+    public synchronized void connectProxy(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("Activity unavailable");
+            return;
+        }
+        try {
+            String link = call.getString("link", "");
+            SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(link);
+            if (pendingCall != null) {
+                pendingCall.reject("A VPN permission request is already pending");
+                pendingCall = null;
+                pendingIntent = null;
+            }
+            Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                    .setAction(AlkhalidiVpnService.ACTION_CONNECT_SINGBOX);
+            put(service, AlkhalidiVpnService.EXTRA_SERVER_NAME, profile.name);
+            put(service, AlkhalidiVpnService.EXTRA_CONFIG_JSON, profile.configJson);
+            service.putExtra(AlkhalidiVpnService.EXTRA_BYPASS_LAN,
+                    call.getBoolean("bypassLanRoute", false));
+            service.putExtra(AlkhalidiVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
+            Intent permission = VpnService.prepare(activity);
+            if (permission != null) {
+                pendingCall = call;
+                pendingIntent = service;
+                startActivityForResult(call, permission, "vpnPermissionResult");
+                return;
+            }
+            startServiceSafely(service, call);
+        } catch (Throwable error) {
+            call.reject("Unable to start proxy profile: " + error.getMessage(),
+                    error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    @PluginMethod
     public synchronized void connect(PluginCall call) {
         Activity activity = getActivity();
         if (activity == null) {
@@ -102,21 +294,21 @@ public class VpnBridgePlugin extends Plugin {
             pendingIntent = null;
         }
 
-        Intent service = new Intent(activity, SeloomVpnService.class)
-                .setAction(SeloomVpnService.ACTION_CONNECT);
-        put(service, SeloomVpnService.EXTRA_SERVER_NAME, call.getString("serverName", "SeloomWarp WireGuard"));
-        put(service, SeloomVpnService.EXTRA_ENDPOINT, endpoint);
-        put(service, SeloomVpnService.EXTRA_DNS, call.getString("dns", "1.1.1.1,1.0.0.1"));
-        put(service, SeloomVpnService.EXTRA_ADDRESS, call.getString("address", "172.16.0.2/32"));
-        put(service, SeloomVpnService.EXTRA_PRIVATE_KEY, privateKey);
-        put(service, SeloomVpnService.EXTRA_PUBLIC_KEY, publicKey);
+        Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                .setAction(AlkhalidiVpnService.ACTION_CONNECT);
+        put(service, AlkhalidiVpnService.EXTRA_SERVER_NAME, call.getString("serverName", "SeloomWarp WireGuard"));
+        put(service, AlkhalidiVpnService.EXTRA_ENDPOINT, endpoint);
+        put(service, AlkhalidiVpnService.EXTRA_DNS, call.getString("dns", "1.1.1.1,1.0.0.1"));
+        put(service, AlkhalidiVpnService.EXTRA_ADDRESS, call.getString("address", "172.16.0.2/32"));
+        put(service, AlkhalidiVpnService.EXTRA_PRIVATE_KEY, privateKey);
+        put(service, AlkhalidiVpnService.EXTRA_PUBLIC_KEY, publicKey);
         // IPv6 must be explicitly present in the peer configuration. Routing
         // ::/0 by default breaks IPv6-only destinations on IPv4-only peers.
-        put(service, SeloomVpnService.EXTRA_ALLOWED_IPS, call.getString("allowedIPs", "0.0.0.0/0"));
-        service.putExtra(SeloomVpnService.EXTRA_MTU, call.getInt("mtu", 1280));
-        service.putExtra(SeloomVpnService.EXTRA_KEEPALIVE, call.getInt("keepalive", 25));
-        service.putExtra(SeloomVpnService.EXTRA_BYPASS_LAN, call.getBoolean("bypassLanRoute", false));
-        service.putExtra(SeloomVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
+        put(service, AlkhalidiVpnService.EXTRA_ALLOWED_IPS, call.getString("allowedIPs", "0.0.0.0/0"));
+        service.putExtra(AlkhalidiVpnService.EXTRA_MTU, call.getInt("mtu", 1280));
+        service.putExtra(AlkhalidiVpnService.EXTRA_KEEPALIVE, call.getInt("keepalive", 25));
+        service.putExtra(AlkhalidiVpnService.EXTRA_BYPASS_LAN, call.getBoolean("bypassLanRoute", false));
+        service.putExtra(AlkhalidiVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
 
         Intent permission = VpnService.prepare(activity);
         if (permission != null) {
@@ -151,8 +343,8 @@ public class VpnBridgePlugin extends Plugin {
             return;
         }
         try {
-            Intent service = new Intent(activity, SeloomVpnService.class)
-                    .setAction(SeloomVpnService.ACTION_DISCONNECT);
+            Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                    .setAction(AlkhalidiVpnService.ACTION_DISCONNECT);
             activity.startService(service);
             JSObject result = new JSObject();
             result.put("status", "disconnected");

@@ -1,166 +1,144 @@
-# 🚀 OODI Proxy Seloom1
+# NexaLink
 
 <p align="center">
-  <a href="https://github.com/seloom1/oodiproxy-shizzi/releases"><img src="https://img.shields.io/github/v/release/seloom1/oodiproxy-shizzi?style=for-the-badge&color=00d9ff" alt="Latest release" /></a>
-  <a href="https://github.com/seloom1/oodiproxy-shizzi/releases"><img src="https://img.shields.io/badge/Android-API%2030%2B-3ddc84?style=for-the-badge&logo=android&logoColor=white" alt="Android API 30+" /></a>
-  <a href="https://github.com/seloom1/oodiproxy-shizzi/releases"><img src="https://img.shields.io/github/downloads/seloom1/oodiproxy-shizzi/v2.1.0/total?style=for-the-badge&color=bf5af2" alt="Downloads" /></a>
+  <strong>WireGuard · Sing-box VPN & Smart Tethering for Android</strong><br />
+  <sub>Secure connectivity, Shizuku-powered hotspot sharing, and network visibility in one app.</sub>
 </p>
 
 <p align="center">
-  <img src="docs/images/upcoming-features.png" alt="ميزات تطبيق OODI Proxy Seloom1" width="520" />
+  <a href="https://github.com/Alkhalidi84/oodiproxy-shizzi"><img src="https://img.shields.io/badge/Android-11%2B-3ddc84?style=for-the-badge&logo=android&logoColor=white" alt="Android 11+" /></a>
+  <a href="https://github.com/Alkhalidi84/oodiproxy-shizzi/tree/rebrand/nexalink-english"><img src="https://img.shields.io/badge/Interface-English-0ea5e9?style=for-the-badge" alt="English interface" /></a>
+  <a href="https://github.com/Alkhalidi84/oodiproxy-shizzi/commits/rebrand/nexalink-english"><img src="https://img.shields.io/badge/Build-2.2.0-8b5cf6?style=for-the-badge" alt="Version 2.2.0" /></a>
 </p>
 
-<p align="center"><strong>اتصال WireGuard أكثر استقراراً، مشاركة Shizuku، وتحكم أفضل بالشبكة.</strong></p>
+## Overview
 
-## 🌐 نبذة عن المشروع
+**NexaLink** is an Android networking application built with React, TypeScript, Capacitor, native Android services, WireGuard, and Sing-box. It combines native VPN connectivity with Shizuku-powered hotspot sharing, allowing tethered devices to use a selected upstream network without requiring root access on supported devices.
 
-**OODI Proxy Seloom1** هو تطبيق Android مبني على Capacitor وWireGuard لتوفير واجهة عربية عملية لإدارة اتصالات VPN، مع دعم مشاركة اتصال الإنترنت عبر Shizuku بدون Root، مراقبة الاستخدام، وإدارة خوادم WireGuard من مكان واحد.
+The application interface is English-first and uses a left-to-right layout.
 
-التطبيق مصمم ليكون خفيفاً وقابلاً للتوسع، ويستخدم Package Name مستقل:
+## Features
 
-```text
-com.oodiproxyseloom1.shizzi
-```
+### WireGuard VPN
+- Native Android VPN service backed by the WireGuard tunnel library.
+- Add and manage multiple WireGuard profiles.
+- Import configurations using a `wireguard://` URI or a `.conf` file.
+- Export profiles as a WireGuard configuration file or QR code.
+- Configure DNS, MTU, Persistent Keepalive, Allowed IPs, and LAN route handling.
+- Display native tunnel traffic counters and transfer rates when available, session duration, and latency.
 
-## 🆕 آخر تحديث — v2.1.0
+### Sing-box proxy profiles
+- Import and save VLESS, VMess, and Trojan share links from the English interface.
+- Validate links natively before saving; supported transports include TCP, WebSocket, gRPC, HTTP/H2, TLS, and VLESS REALITY where represented by the share link.
+- Run Sing-box through the same Android VPN service and TUN ownership manager as WireGuard; the engines are mutually exclusive.
+- Read cumulative upload/download counters from the Sing-box native status stream when the engine reports traffic availability.
+- Proxy profiles are stored separately from WireGuard peers. The app stores the original share URI in local app storage; treat imported links as credentials and do not share them publicly.
 
-يتضمن هذا الإصدار إضافة مشاركة الإنترنت عبر Shizuku بعد حذف ميزة NetShare، مع إضافة قياس قوة إشارة الشريحة وتحسين معلومات الشبكة.
+### Smart tethering with Shizuku
+- Integrated Shizzi Android module.
+- Start hotspot sharing through Shizuku on supported devices without root.
+- Route tethered-client traffic through the selected upstream network, including an active VPN when the VPN binding mode is enabled.
+- Go-based datapath with IPv4 and IPv6 support.
+- Session status, connected-client count, aggregate traffic counters, and recovery handling.
+- Connected-device panel with best-effort MAC/IP inventory and saved blocked-device list.
+- Capability-gated device blocking through Android Soft AP configuration when the OEM Wi-Fi stack supports client force-disconnect.
+- Experimental per-device payload accounting from relayed TCP/UDP traffic, associated with devices through the hotspot ARP IP-to-MAC table. This is not a complete Layer-2 or total tethering byte counter; offloaded, bypassed, unmapped, or non-relayed traffic may be absent.
+- Shizuku permission and battery-optimization entry points.
 
-كما يتضمن إصلاحات مهمة لاتصال وفصل VPN وWireGuard، وتحسين DNS وAllowedIPs، ومنع مشاكل IPv6 وDNS IPv6 مع الخوادم التي لا تدعمها، إضافةً إلى تحسين استقرار الخدمة في الخلفية واستثناء التطبيقات وتجربة الاستخدام بشكل عام.
+### Network tools
+- Public IP and country display while connected.
+- SIM and cellular signal information where Android permissions and device APIs allow it.
+- Application exclusions for the WireGuard tunnel.
+- Local storage for server profiles, settings, and connection history.
 
-## ✨ الميزات الحالية
+## Architecture and validation
 
-### 🔐 اتصال WireGuard وإدارة الخوادم
+- [VPN engine architecture](docs/VPN_ENGINE_ARCHITECTURE.md) describes the single-active-engine lifecycle and the separation between phone VPN and Shizuku tethering.
+- [Sing-box integration and release gates](docs/SING_BOX_INTEGRATION.md) documents the implemented libbox adapter, supported profile-link mapping, platform limitations, and device validation still required.
 
-- اتصال WireGuard أصلي عبر خدمة VPN على Android.
-- إضافة عدة خوادم WireGuard وإدارتها محلياً.
-- استيراد إعدادات WireGuard عبر رابط URI أو ملف إعدادات.
-- اختيار الخادم النشط والتبديل بين الخوادم بسهولة.
-- اختبار زمن الاستجابة Ping للخوادم واختيار الخادم الأفضل.
-- تصدير إعدادات الخادم بصيغة `.conf` أو QR Code.
-- حفظ الخوادم والإعدادات محلياً دون الحاجة إلى حساب.
-- دعم DNS وMTU وPersistent Keepalive وAllowed IPs.
-- خيار تجاوز مسارات الشبكة المحلية عند الحاجة.
+CI verifies source compilation, unit tests, native dependency packaging, and APK structure. It does not replace physical-device testing. Before a production release, validate real proxy endpoints, WireGuard/Sing-box switching, TUN cleanup, network handover, DNS and IPv6 behavior, and tethered-client TCP/UDP traffic on the target Android/OEM devices.
 
-### 🛡️ استثناء التطبيقات من VPN
+The current CI APK is ARM64-only. Protocol link parsing is not a guarantee that every V2Ray/Xray transport or server extension is supported. Per-device tethering byte counts remain best-effort and incomplete on paths that bypass the userspace datapath.
 
-- حقل مخصص في الواجهة الرئيسية لفتح إعدادات الاستثناءات.
-- خيار مستقل داخل القائمة المنسدلة.
-- عرض التطبيقات القابلة للتشغيل المثبتة على الجهاز.
-- إظهار أيقونة التطبيق واسمه وPackage Name.
-- البحث باسم التطبيق أو Package Name.
-- التطبيقات المحددة تظهر في بداية القائمة.
-- عرض عدد التطبيقات المستثناة.
-- تمرير القائمة فعلياً إلى WireGuard عبر `ExcludedApplications`، وليس مجرد إعداد شكلي.
-- حفظ التطبيقات المختارة محلياً وإعادة استخدامها عند الاتصال التالي.
+## Requirements
 
-### 📡 مشاركة الإنترنت وHotspot عبر Shizuku
+- Android 11 (API 30) or later.
+- ARM64 device for the currently integrated native datapath build.
+- Shizuku installed and running for Shizzi tethering.
+- Wireless debugging or root can be used to start Shizuku; root is not required by NexaLink itself for the supported Shizuku workflow.
 
-- مشاركة اتصال الإنترنت مع الأجهزة المتصلة عبر Hotspot باستخدام Shizuku بدون Root.
-- دعم Wi-Fi وUSB Tethering حسب إمكانيات الجهاز.
-- عرض عدد الأجهزة المتصلة.
-- عرض إجمالي البيانات المستخدمة في المشاركة.
-- عرض سرعة التنزيل والرفع للأجهزة المشتركة.
-- تغيير ثيم بطاقة المشاركة بين Cyan وViolet وGreen.
-- إعداد اسم الشبكة وكلمة المرور وخيارات الشبكة من داخل التطبيق.
+Device and OEM tethering restrictions may affect availability. A successful build does not guarantee identical hotspot behavior on every Android device.
 
-### ⚡ Shizzi + Shizuku
+## Build from source
 
-- دمج كود مشروع **Shizzi** داخل APK نفسه كموديول Android داخلي.
-- تشغيل مشاركة Hotspot عبر Shizuku بدون Root.
-- إنشاء test network وتمرير حركة الأجهزة المتصلة عبر نفق VPN.
-- دعم IPv4 وIPv6 عبر datapath مبني بـGo وgomobile.
-- فتح واجهة Shizzi من القائمة المنسدلة داخل OODI.
-- ظهور التطبيق داخل تطبيق Shizuku ومنحه الصلاحية من هناك.
-- دعم Quick Settings Tile وأوامر التشغيل والإيقاف والأتمتة الموجودة في Shizzi.
+### Prerequisites
+- Node.js and npm
+- JDK 21
+- Android SDK / Android Platform 36
+- Android Gradle Plugin and Gradle versions configured in the repository
 
-تم حذف ميزة NetShare من التطبيق واستبدالها بمكوّن Shizuku المدمج.
-
-> يجب تثبيت تطبيق **Shizuku** وتشغيله أولاً عبر Wireless Debugging أو Root، ثم فتح خيار Shizzi داخل OODI ومنح الصلاحية من تطبيق Shizuku. هذه النسخة تتطلب Android 11 / API 30 أو أحدث ومعمارية ARM64.
-
-### 📊 الإحصائيات والمراقبة
-
-- عرض عنوان IP الخارجي والدولة عند الاتصال.
-- عرض إجمالي التنزيل والرفع من نفق WireGuard.
-- عرض مدة الاتصال وسرعة نقل البيانات.
-- قراءة إحصائيات WireGuard الحقيقية بدلاً من أرقام تجريبية.
-- سجل للاتصالات السابقة مع إمكانية مسحه.
-- تحديث معلومات الشبكة يدوياً عند الحاجة.
-- قياس قوة إشارة الشريحة وعرض معلومات SIM والشبكة الخلوية.
-
-### 🎨 الواجهة وتجربة الاستخدام
-
-- واجهة عربية RTL مناسبة للشاشات الصغيرة.
-- تصميم داكن مع بطاقات واضحة وحالات اتصال ملونة.
-- حقل استثناء التطبيقات موضوع في أسفل عناصر الواجهة مباشرة فوق قناة التليگرام.
-- ألوان الحقول قابلة للتمييز دون سطوع مزعج.
-- قائمة منسدلة تجمع إدارة الخوادم والإعدادات والتصدير والاستثناءات.
-- دعم صور وأيقونات التطبيقات داخل قائمة الاستثناءات.
-
-## 📦 بيانات الإصدار الحالي
-
-| العنصر | القيمة |
-|---|---|
-| Package Name | `com.oodiproxyseloom1.shizzi` |
-| Version Name | `2.1.0` |
-| Version Code | `16` |
-| Minimum Android | API 30 / Android 11 |
-| Target SDK | API 36 |
-| Release | [v2.1.0 على GitHub](https://github.com/seloom1/oodiproxy-shizzi/releases/tag/v2.1.0) |
-
-## ⬇️ التحميل
-
-- [تحميل Release APK](https://github.com/seloom1/oodiproxy-shizzi/releases/download/v2.1.0/oodiproxy-shizzi-v2.1.0-release.apk)
-- [تحميل Debug APK](https://github.com/seloom1/oodiproxy-shizzi/releases/download/v2.1.0/oodiproxy-shizzi-v2.1.0-debug.apk)
-
-> نسخة Release الحالية موقعة للتجربة المحلية. للنشر الرسمي على Google Play يجب استخدام keystore ثابت ومفتاح رفع محفوظ بشكل آمن، ويفضل رفع ملف Android App Bundle بصيغة `.aab`.
-
-## 🧰 البناء محلياً
-
-المتطلبات: Node.js، Android SDK، JDK 21، وAndroid Platform 36.
+### Build commands
 
 ```bash
 npm ci
 npm run lint
 npm run android:sync
 cd android
-./gradlew assembleDebug assembleRelease
+./gradlew assembleDebug
+./gradlew assembleRelease
 ```
 
-مخرجات APK تكون داخل:
+APK outputs are written to:
 
 ```text
 android/app/build/outputs/apk/debug/
 android/app/build/outputs/apk/release/
 ```
 
-## ⚠️ ملاحظات مهمة
+For a distributable release, configure a persistent signing keystore using the `RELEASE_KEYSTORE_PATH`, `RELEASE_KEY_ALIAS`, `RELEASE_STORE_PASSWORD`, and `RELEASE_KEY_PASSWORD` environment variables. Keep signing credentials outside the repository.
 
-- تغيير Package Name أو مفتاح التوقيع يجعل Android يتعامل مع النسخة كتطبيق مختلف.
-- يجب استخدام نفس مفتاح التوقيع في كل الإصدارات المستقبلية حتى تعمل التحديثات فوق النسخة الحالية.
-- صلاحية `QUERY_ALL_PACKAGES` مستخدمة لعرض التطبيقات المثبتة مع أيقوناتها. عند النشر على Google Play يجب مراجعة سياسة Google الخاصة بهذه الصلاحية.
-- نظام GitHub يعرض إشعار التحديث داخل التطبيق عند فتحه أو عند تنفيذ الفحص الدوري؛ لا يثبت APK تلقائياً دون تدخل المستخدم.
+## Application identifiers
 
-## 🇬🇧 English summary
+| Property | Value |
+|---|---|
+| App name | NexaLink |
+| Application ID | `com.oodiproxyseloom1.shizzi` |
+| Version name | `2.2.0` |
+| Version code | `17` |
+| Minimum Android | Android 11 / API 30 |
+| Target SDK | API 36 |
 
-OODI Proxy Seloom1 is an Arabic RTL Android WireGuard client built with Capacitor. It provides multi-server management, native WireGuard connectivity, Shizuku-based hotspot sharing without root, traffic statistics, SIM signal information, app exclusions with searchable app icons, local settings, and a GitHub-hosted in-app update manifest.
+The existing application ID is intentionally retained to preserve upgrade compatibility with installations signed using the matching original signing key. The application ID and signing key should not be changed casually.
 
-The current standalone application ID is `com.oodiproxyseloom1.shizzi`, version `2.1.0`, with Android API 30 as the minimum supported version and API 36 as the target SDK.
+## Project structure
 
-## 🙌 Credits
+- `src/` — React and TypeScript application interface.
+- `src/components/` — screens, dialogs, controls, and visual components.
+- `src/utils/` — WireGuard configuration, native bridges, and network helpers.
+- `android/app/` — Android application, VPN service, and Capacitor plugins.
+- `android/shizzi/` — integrated Shizzi Android module.
+- `third_party/shizzi/` — upstream Shizzi source and related datapath implementation.
 
-### 🤝 المشاريع والمكونات المشتركة
+## Credits and third-party projects
 
-- **WireGuard** — تقنية نفق VPN مفتوحة المصدر والمكوّن الأساسي للاتصال المشفر.
-- **WireGuard Android Tunnel** — مكتبة Android لتشغيل النفق وإدارته وقراءة إحصائياته.
-- **Capacitor** — الجسر المستخدم لربط واجهة React/TypeScript بخدمات Android الأصلية.
-- **React وTypeScript وVite** — تقنيات بناء الواجهة وتجهيز نسخة Android.
-- **Android PackageManager** — قراءة التطبيقات وأسمائها وأيقوناتها لدعم استثناء التطبيقات من VPN.
-- **GitHub Releases وGitHub Raw** — استضافة الإصدارات وملف التحديثات المجاني.
-- **Shizzi — [carlelieser/shizzi](https://github.com/carlelieser/shizzi)** — مكوّن مشاركة Wi-Fi tethering عبر شبكة Shizuku المميزة، مدمج داخل هذا الـFork مع الإبقاء على نسبة المشروع لصاحبه.
+NexaLink builds on open-source projects and libraries. Their original authors retain ownership and attribution for their respective work.
 
-### 🧑‍💻 المساعدون وأدوات التطوير
+- **WireGuard** — VPN protocol and Android tunnel library: https://www.wireguard.com/
+- **Shizuku** — privileged API bridge for Android applications: https://github.com/RikkaApps/Shizuku
+- **Shizzi** — hotspot/tethering implementation integrated as a local Android module: https://github.com/carlelieser/shizzi
+- **Capacitor** — native bridge for the web application: https://capacitorjs.com/
+- **React, TypeScript, Vite, and Go/gVisor** — application and networking technologies.
 
-الشكر لكل من ساهم في تطوير الفكرة والمكونات والتجربة، ولأدوات **Android SDK وJDK وGradle وCapacitor CLI وGitHub CLI** المستخدمة في البناء والاختبار والنشر. كما تم استخدام مساعد برمجي للمساعدة في تصميم الواجهة، ربط JavaScript مع Android، اختبار TypeScript، إصلاح أخطاء البناء، تجهيز التوثيق، وإدارة الإصدارات.
+## Maintainer
 
-> حقوق وأسماء المشاريع الخارجية محفوظة لأصحابها ومطوريها. يرد هذا القسم للتوثيق والامتنان وبيان المكونات المشتركة المستخدمة في المشروع.
+**Mustafa Al-Khalidi**  
+Independent Android & Network Software Developer
+
+- GitHub: https://github.com/Alkhalidi84
+- Project: https://github.com/Alkhalidi84/oodiproxy-shizzi
+
+NexaLink is maintained and customized by Mustafa Al-Khalidi. This attribution does not transfer ownership of third-party libraries or upstream Shizzi/WireGuard code.
+
+## License
+
+Review the licenses of the upstream projects and bundled dependencies before redistributing a modified build. Preserve all required copyright notices and license texts.

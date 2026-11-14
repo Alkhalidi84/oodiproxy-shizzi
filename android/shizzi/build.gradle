@@ -9,7 +9,7 @@ android {
     defaultConfig {
         minSdk 30
         targetSdk 36
-        buildConfigField 'int', 'SERVICE_BUILD_ID', '1'
+        buildConfigField 'int', 'SERVICE_BUILD_ID', '2'
         buildConfigField 'String', 'APPLICATION_ID', '\"com.oodiproxyseloom1.shizzi\"'
         buildConfigField 'String', 'VERSION_NAME', '"2.0"'
     }
@@ -36,6 +36,9 @@ dependencies {
     // The host application packages this local AAR. Keeping it compile-only
     // avoids AGP rejecting a local AAR nested inside the Shizzi AAR.
     compileOnly files('libs/datapath.aar')
+    // Compile against the single shared gomobile runtime supplied at app runtime by libbox.aar.
+    // CI extracts only go/*.class into this JAR after verifying ABI compatibility.
+    compileOnly files('libs/go-runtime.jar')
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
     implementation 'androidx.activity:activity-compose:1.9.3'
@@ -51,4 +54,5 @@ dependencies {
     implementation 'dev.rikka.shizuku:api:13.1.5'
     implementation 'dev.rikka.shizuku:provider:13.1.5'
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
+    testImplementation 'junit:junit:4.13.2'
 }

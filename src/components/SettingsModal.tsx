@@ -8,6 +8,9 @@ interface SettingsModalProps {
   settings: AppSettings;
   onSaveSettings: (settings: AppSettings) => void;
   onResetServers: () => void;
+  onExportBackup: (password: string) => Promise<void>;
+  onImportBackup: (file: File, password: string) => Promise<void>;
+  onOpenVpnSettings: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -16,9 +19,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   settings,
   onSaveSettings,
   onResetServers,
+  onExportBackup,
+  onImportBackup,
+  onOpenVpnSettings,
 }) => {
   const [form, setForm] = React.useState<AppSettings>(settings);
   const [savedNotice, setSavedNotice] = React.useState(false);
+  const [backupPassword, setBackupPassword] = React.useState('');
+  const [backupMessage, setBackupMessage] = React.useState('');
+  const backupFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     setForm(settings);
@@ -48,7 +57,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-right overflow-hidden"
+        className="relative w-full max-w-lg bg-[#080d24] border border-cyan-500/30 rounded-3xl p-5 sm:p-6 shadow-[0_0_50px_rgba(6,182,212,0.25)] max-h-[90vh] flex flex-col text-left overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
@@ -61,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           
           <div className="flex items-center gap-2">
             <h2 id="settings-title" className="text-lg font-bold text-white tracking-wide">
-              إعدادات التطبيق والشبكة
+              App & Network Settings
             </h2>
             <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
               <Settings className="w-5 h-5" />
@@ -74,7 +83,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* DNS selection */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1.5">
-              <span>خادم DNS الافتراضي</span>
+              <span>Default DNS Server</span>
               <Globe className="w-3.5 h-3.5 text-blue-400" />
             </label>
             <select
@@ -94,7 +103,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1">
-                <span>WireGuard MTU</span>
+                <span>Global WireGuard MTU</span>
                 <Wifi className="w-3.5 h-3.5 text-cyan-400" />
               </label>
               <input
@@ -103,12 +112,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, mtu: parseInt(e.target.value, 10) || 1280 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">افتراضي Cloudflare: 1280</span>
+              <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-300 flex items-center justify-end gap-1">
-                <span>Keepalive (ثانية)</span>
+                <span>Global Keepalive (seconds)</span>
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
               </label>
               <input
@@ -117,22 +126,88 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(e) => setForm({ ...form, keepalive: parseInt(e.target.value, 10) || 25 })}
                 className="w-full bg-[#050816] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono outline-none focus:border-cyan-500"
               />
-              <span className="text-[10px] text-slate-500 block text-left">الموصى به: 25 ثانية</span>
+              <span className="text-[10px] text-slate-500 block text-left">Applied to all new VPN sessions</span>
             </div>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="text-xs font-bold text-slate-200">Automatic VPN Reconnect</span>
+              <input
+                type="checkbox"
+                checked={form.autoReconnect}
+                onChange={(event) => setForm({ ...form, autoReconnect: event.target.checked })}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <p className="text-[10px] leading-relaxed text-slate-500">When enabled, NexaLink checks for an unexpected tunnel drop while the app is running and retries a previous connection a limited number of times. Reopening the app can also resume a saved connection intent. Manual disconnect disables recovery.</p>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <div className="text-right text-xs font-bold text-slate-200">Android VPN Lockdown</div>
+            <p className="text-[10px] leading-relaxed text-slate-500">Android controls Always-on VPN and Block connections without VPN. NexaLink cannot silently enable system lockdown; configure it in Android settings.</p>
+            <button type="button" onClick={onOpenVpnSettings} className="w-full rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs font-bold text-amber-200">
+              Open Android VPN Settings
+            </button>
+          </div>
+
+          {/* Encrypted backup and restore */}
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <div className="text-right text-xs font-bold text-slate-200">Encrypted Backup</div>
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={backupPassword}
+              onChange={(event) => setBackupPassword(event.target.value)}
+              placeholder="Backup password (10+ characters)"
+              className="w-full rounded-xl border border-slate-700 bg-[#050816] px-3 py-2 text-xs text-white outline-none focus:border-cyan-500"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={backupPassword.length < 10}
+                onClick={() => {
+                  setBackupMessage('');
+                  void onExportBackup(backupPassword).then(() => setBackupMessage('Encrypted backup exported.')).catch((error) => setBackupMessage(error?.message || 'Backup export failed.'));
+                }}
+                className="rounded-xl bg-cyan-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+              >Export Backup</button>
+              <button
+                type="button"
+                disabled={backupPassword.length < 10}
+                onClick={() => backupFileRef.current?.click()}
+                className="rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-slate-100 disabled:opacity-40"
+              >Import Backup</button>
+            </div>
+            <input
+              ref={backupFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                setBackupMessage('');
+                void onImportBackup(file, backupPassword).then(() => setBackupMessage('Backup restored.')).catch((error) => setBackupMessage(error?.message || 'Backup restore failed.'));
+              }}
+            />
+            <p className="text-[10px] leading-relaxed text-slate-500">Backups contain server credentials and settings. They are encrypted with AES-256-GCM; keep the password safe. Restoring is disabled while a VPN tunnel is connected.</p>
+            {backupMessage && <p role="status" className="text-[11px] text-cyan-300">{backupMessage}</p>}
           </div>
 
           {/* Reset servers button */}
           <div className="pt-3 border-t border-slate-800/80">
             <button
               onClick={() => {
-                if (window.confirm('هل تريد استعادة قائمة الخوادم الافتراضية؟')) {
+                if (window.confirm('Restore the default server list?')) {
                   onResetServers();
                 }
               }}
               className="w-full py-2 px-3 rounded-xl bg-slate-800/60 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>إعادة تعيين الخوادم إلى الوضع الافتراضي</span>
+              <span>Reset Servers to Defaults</span>
             </button>
           </div>
         </div>
@@ -143,7 +218,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             {savedNotice && (
               <>
                 <Check className="w-4 h-4" />
-                <span>تم حفظ الإعدادات</span>
+                <span>Settings saved</span>
               </>
             )}
           </div>
@@ -153,13 +228,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300"
             >
-              إلغاء
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-xs font-bold text-white shadow-md transition-all active:scale-95"
             >
-              حفظ
+              Save
             </button>
           </div>
         </div>

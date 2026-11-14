@@ -67,8 +67,6 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     detail = intent.getStringExtra(Automation.EXTRA_DETAIL).orEmpty(),
                     interfaceName = intent.getStringExtra(Automation.EXTRA_INTERFACE).orEmpty(),
                     lastError = intent.getStringExtra(Automation.EXTRA_ERROR).orEmpty(),
-                    isVpnBound = false,
-                    isVpnBypassed = false,
                     clientCount = intent.getIntExtra(Automation.EXTRA_CLIENT_COUNT, 0),
                     traffic = Traffic(
                         up = intent.getLongExtra(Automation.EXTRA_BYTES_UP, 0L),
@@ -186,6 +184,68 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             it.asStopped()
         }
         SessionService.stop(getApplication())
+    }
+
+    fun refreshHotspotClients() {
+        if (localState.value.status != UiStatus.CONNECTED) return
+        viewModelScope.launch {
+            runCatching { diagnostics.status() }
+                .onSuccess { status ->
+                    localState.update { current -> current.applyOutcome(Result.success(status)) }
+                }
+                .onFailure { failure ->
+                    SessionLog.warn("could not refresh hotspot clients: ${failure.message}")
+                }
+        }
+    }
+
+    fun setHotspotClientBlocked(macAddress: String, blocked: Boolean) {
+        viewModelScope.launch {
+            var actionMessage: String? = null
+            runCatching { diagnostics.setClientBlocked(macAddress, blocked) }
+                .onSuccess { raw ->
+                    val result = runCatching { org.json.JSONObject(raw) }.getOrNull()
+                    actionMessage = result?.optString("message")?.takeIf { it.isNotBlank() }
+                        ?: "Hotspot block-list update failed"
+                    if (result?.optBoolean("success") != true) {
+                        SessionLog.warn(actionMessage.orEmpty())
+                    } else {
+                        SessionLog.info(actionMessage.orEmpty())
+                    }
+                    runCatching { diagnostics.status() }
+                        .onSuccess { status ->
+                            localState.update { current ->
+                                val updated = current.applyOutcome(Result.success(status))
+                                updated.copy(
+                                    hotspotClients = updated.hotspotClients.copy(
+                                        actionMessage = actionMessage,
+                                    ),
+                                )
+                            }
+                        }
+                        .onFailure { failure ->
+                            SessionLog.warn("could not refresh hotspot client list: ${failure.message}")
+                            localState.update { current ->
+                                current.copy(
+                                    hotspotClients = current.hotspotClients.copy(
+                                        actionMessage = actionMessage,
+                                    ),
+                                )
+                            }
+                        }
+                }
+                .onFailure { failure ->
+                    actionMessage = "Hotspot client action failed: ${failure.message}"
+                    SessionLog.error(actionMessage.orEmpty())
+                    localState.update { current ->
+                        current.copy(
+                            hotspotClients = current.hotspotClients.copy(
+                                actionMessage = actionMessage,
+                            ),
+                        )
+                    }
+                }
+        }
     }
 
     fun runProbes() {
