@@ -31,20 +31,20 @@ final class VpnRoutePolicy {
             if (route.isEmpty()) continue;
             try {
                 int bits = addressBits(route);
-                if (("0.0.0.0/0".equals(route) && bits == 32)
-                        || ("::/0".equalsIgnoreCase(route) && bits == 128)) {
-                    List<String> pieces = new ArrayList<>();
-                    pieces.add(route);
-                    List<String> exclusions = bits == 32 ? IPV4_LAN : IPV6_LAN;
-                    for (String exclusion : exclusions) {
-                        List<String> next = new ArrayList<>();
-                        for (String piece : pieces) next.addAll(subtract(piece, exclusion));
-                        pieces = next;
-                    }
-                    result.addAll(pieces);
-                } else {
+                List<String> pieces = new ArrayList<>();
+                pieces.add(route);
+                List<String> exclusions = bits == 32 ? IPV4_LAN : bits == 128 ? IPV6_LAN : null;
+                if (exclusions == null) {
                     result.add(route);
+                    continue;
                 }
+                for (String exclusion : exclusions) {
+                    List<String> next = new ArrayList<>();
+                    for (String piece : pieces) next.addAll(subtract(piece, exclusion));
+                    pieces = next;
+                    if (pieces.isEmpty()) break;
+                }
+                result.addAll(pieces);
             } catch (Exception invalidRoute) {
                 // Preserve the caller's validation/error path for malformed CIDRs.
                 result.add(route);
