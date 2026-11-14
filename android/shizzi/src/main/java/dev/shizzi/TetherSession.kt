@@ -134,17 +134,23 @@ class TetherSession(private val context: Context) {
     private fun awaitDownstreamTethered() {
         val deadline = System.currentTimeMillis() + DOWNSTREAM_SETTLE_MS
         val downstream = DownstreamInspector()
+        var lastObservation: Boolean? = null
 
         while (System.currentTimeMillis() < deadline) {
-
-            if (downstream.findTetheredDownstream() != null) {
-                SessionLog.info("downstream tethered")
+            lastObservation = downstream.isTethered()
+            if (lastObservation == true) {
+                SessionLog.info("downstream tethered and confirmed by dumpsys")
                 return
             }
             Thread.sleep(DOWNSTREAM_POLL_MS)
         }
 
-        SessionLog.warn("downstream not tethered after ${DOWNSTREAM_SETTLE_MS}ms; continuing")
+        val reason = when (lastObservation) {
+            false -> "hotspot did not enter TetheredState"
+            null -> "dumpsys tethering did not provide a reliable state"
+            true -> "downstream verification timed out"
+        }
+        error("awaitDownstreamTethered: $reason after ${DOWNSTREAM_SETTLE_MS}ms")
     }
 
     private fun verifyUpstream(name: String) {
