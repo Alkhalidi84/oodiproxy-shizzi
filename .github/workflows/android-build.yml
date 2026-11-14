@@ -179,7 +179,23 @@ jobs:
               remaining = rebuilt_names & libbox_classes
               if remaining:
                   raise SystemExit("Duplicate runtime classes remain: " + ", ".join(sorted(remaining)))
-              print("Verified and shared", len(duplicates), "gomobile runtime classes")
+
+              # The Shizzi library compiles against this small JAR, while the
+              # app packages the authoritative runtime from libbox.aar exactly once.
+              runtime_jar = "android/shizzi/libs/go-runtime.jar"
+              os.makedirs(os.path.dirname(runtime_jar), exist_ok=True)
+              runtime_count = 0
+              with zipfile.ZipFile(jars[1]) as source, zipfile.ZipFile(
+                  runtime_jar, "w", compression=zipfile.ZIP_DEFLATED
+              ) as target:
+                  for name in sorted(source.namelist()):
+                      if name.startswith("go/") and name.endswith(".class"):
+                          target.writestr(name, source.read(name))
+                          runtime_count += 1
+              if runtime_count == 0:
+                  raise SystemExit("libbox classes.jar contains no gomobile go.* runtime classes")
+              print("Verified and shared", len(duplicates), "gomobile runtime classes;")
+              print("extracted", runtime_count, "runtime classes for Shizzi compile classpath")
           PY
 
       - name: Restore Java 21 for Android Gradle
