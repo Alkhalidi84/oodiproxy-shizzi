@@ -55,7 +55,7 @@ jobs:
           go install golang.org/x/mobile/cmd/gomobile@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           gomobile init
-          gomobile bind -target=android -androidapi 30 -o "$GITHUB_WORKSPACE/android/shizzi/libs/datapath.aar" .
+          gomobile bind -javapkg=dev.shizzi.gomobile -target=android -androidapi 30 -o "$GITHUB_WORKSPACE/android/shizzi/libs/datapath.aar" .
 
       # Build the exact ARM64 libbox AAR consumed by the Android app.
       # Keep this in the same workflow so APK builds never race a separate artifact workflow.
@@ -95,57 +95,6 @@ jobs:
           unzip -p libbox.aar classes.jar > /tmp/libbox-classes.jar
           jar tf /tmp/libbox-classes.jar | grep -Fxq 'io/nekohasekai/libbox/CommandServer.class'
           sha256sum "$GITHUB_WORKSPACE/android/app/libs/libbox.aar"
-
-      - name: Deduplicate shared gomobile runtime classes
-        run: |
-          python3 - <<'PY'
-          import io
-          import os
-          import tempfile
-          import zipfile
-
-          datapath = "android/shizzi/libs/datapath.aar"
-          libbox = "android/app/libs/libbox.aar"
-
-          def read_classes(aar_path):
-              with zipfile.ZipFile(aar_path, "r") as aar:
-                  return aar.read("classes.jar")
-
-          with zipfile.ZipFile(datapath, "r") as aar:
-              entries = {item.filename: aar.read(item.filename) for item in aar.infolist() if not item.is_dir()}
-
-          datapath_jar = zipfile.ZipFile(io.BytesIO(entries["classes.jar"]), "r")
-          libbox_jar = zipfile.ZipFile(io.BytesIO(read_classes(libbox)), "r")
-          datapath_classes = {name: datapath_jar.read(name) for name in datapath_jar.namelist() if not name.endswith("/")}
-          libbox_classes = {name: libbox_jar.read(name) for name in libbox_jar.namelist() if not name.endswith("/")}
-          duplicates = sorted(set(datapath_classes) & set(libbox_classes))
-          mismatched = [name for name in duplicates if datapath_classes[name] != libbox_classes[name]]
-          if mismatched:
-              raise SystemExit("Conflicting duplicate JVM classes between gomobile AARs: " + ", ".join(mismatched))
-
-          if not duplicates:
-              raise SystemExit("Expected shared gomobile runtime classes were not found; refusing to alter AARs")
-
-          merged_jar = io.BytesIO()
-          with zipfile.ZipFile(merged_jar, "w", zipfile.ZIP_DEFLATED) as output:
-              for name, data in datapath_classes.items():
-                  if name not in duplicates:
-                      output.writestr(name, data)
-
-          entries["classes.jar"] = merged_jar.getvalue()
-          fd, temp_path = tempfile.mkstemp(suffix=".aar", dir=os.path.dirname(datapath))
-          os.close(fd)
-          try:
-              with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as output:
-                  for name, data in entries.items():
-                      output.writestr(name, data)
-              os.replace(temp_path, datapath)
-          finally:
-              if os.path.exists(temp_path):
-                  os.unlink(temp_path)
-
-          print(f"Removed {len(duplicates)} byte-identical shared classes from datapath.aar; libbox.aar supplies the common gomobile runtime.")
-          PY
 
       - name: Restore Java 21 for Android Gradle
         uses: actions/setup-java@v4
