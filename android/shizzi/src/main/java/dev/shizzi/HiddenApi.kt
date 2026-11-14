@@ -195,9 +195,21 @@ class TestNetworkApi(private val context: Context) {
         val instance = manager ?: error("createTunInterface: test_network service unavailable")
         val owner = managerClass ?: error("createTunInterface: TestNetworkManager class absent")
 
-        val created = invokeCollectionOverload(owner, instance, addresses)
-            ?: invokeArrayOverload(owner, instance, addresses)
-            ?: error("createTunInterface: no known overload accepted LinkAddresses $addresses")
+        // Preserve platform exceptions: swallowing InvocationTargetException hid
+        // OEM/API incompatibilities as if they were invalid TUN descriptors.
+        val failures = mutableListOf<String>()
+        val created = try {
+            invokeCollectionOverload(owner, instance, addresses)?.also {
+                failures += "Collection overload succeeded"
+            } ?: invokeArrayOverload(owner, instance, addresses)?.also {
+                failures += "LinkAddress[] overload succeeded"
+            } ?: error("no supported createTunInterface overload returned an interface; " + failures.joinToString("; "))
+        } catch (failure: Throwable) {
+            throw IllegalStateException(
+                "createTunInterface failed for ${addresses.joinToString()}: ${failure.javaClass.simpleName}: ${failure.message}",
+                failure,
+            )
+        }
 
         return TunHandle(created)
     }
@@ -206,61 +218,36 @@ class TestNetworkApi(private val context: Context) {
         owner: Class<*>,
         instance: Any,
         addresses: List<LinkAddress>,
-    ): Any? = runCatching {
-        val method = owner.getMethod("createTunInterface", Collection::class.java)
-        method.invoke(instance, addresses)
-    }.getOrNull()
+    ): Any? = invokeTunFactory(owner, instance, Collection::class.java, addresses)
 
     private fun invokeArrayOverload(
         owner: Class<*>,
         instance: Any,
         addresses: List<LinkAddress>,
-    ): Any? = runCatching {
+    ): Any? {
         val arrayType = Class.forName("[Landroid.net.LinkAddress;")
-        val method = owner.getMethod("createTunInterface", arrayType)
         val argument = java.lang.reflect.Array.newInstance(LinkAddress::class.java, addresses.size)
         addresses.forEachIndexed { index, address ->
             java.lang.reflect.Array.set(argument, index, address)
         }
-        method.invoke(instance, argument)
-    }.getOrNull()
-
-    fun setupTestNetwork(interfaceName: String, dnsServers: List<InetAddress>, binder: IBinder) {
-        val instance = manager ?: error("setupTestNetwork: test_network service unavailable")
-        val owner = managerClass ?: error("setupTestNetwork: TestNetworkManager class absent")
-
-        val properties = LinkProperties().apply {
-            setInterfaceName(interfaceName)
-            val addDnsServer = LinkProperties::class.java
-                .getMethod("addDnsServer", InetAddress::class.java)
-            dnsServers.forEach { addDnsServer.invoke(this, it) }
-        }
-        if (setupWithLinkProperties(owner, instance, properties to binder)) return
-
-        val method = owner.getMethod("setupTestNetwork", String::class.java, IBinder::class.java)
-        method.invoke(instance, interfaceName, binder)
+        return invokeTunFactory(owner, instance, arrayType, argument)
     }
 
-    private fun setupWithLinkProperties(
+    private fun invokeTunFactory(
         owner: Class<*>,
         instance: Any,
-        request: Pair<LinkProperties, IBinder>,
-    ): Boolean = runCatching {
-        val method = owner.getMethod(
-            "setupTestNetwork",
-            LinkProperties::class.java,
-            Boolean::class.javaPrimitiveType,
-            IBinder::class.java,
-        )
-        method.invoke(instance, request.first, true, request.second)
-    }.isSuccess
-
-    fun teardownTestNetwork(network: Network) {
-        val instance = manager ?: return
-        val owner = managerClass ?: return
-        val method = owner.getMethod("teardownTestNetwork", Network::class.java)
-        method.invoke(instance, network)
+        parameterType: Class<*>,
+        argument: Any,
+    ): Any? {
+        val method = owner.getMethod("createTunInterface", parameterType)
+        return try {
+            method.invoke(instance, argument)
+        } catch (wrapped: java.lang.reflect.InvocationTargetException) {
+            throw wrapped.targetException ?: wrapped
+        }
     }
+
+    fun setupTestNetwork(interfaceName: String, dnsServers: List<InetAddress>, binder: IBinder) {
 }
 
 class TunHandle(private val delegate: Any) {
