@@ -57,6 +57,9 @@ public class AlkhalidiVpnService extends VpnService {
     /** Called by SingBoxEngine when libbox asks Android to establish its TUN. */
     public void onSingBoxTunEstablished(android.os.ParcelFileDescriptor descriptor) {
         singBoxTunDescriptor = descriptor;
+        singBoxUploadBytes = 0L;
+        singBoxDownloadBytes = 0L;
+        singBoxTrafficAvailable = false;
     }
 
     public void onSingBoxTunClosed(android.os.ParcelFileDescriptor descriptor) {
@@ -66,6 +69,7 @@ public class AlkhalidiVpnService extends VpnService {
     /** Keep the public VPN state in sync if libbox stops itself or its command service. */
     public void onSingBoxEngineStopped() {
         isRunning = false;
+        singBoxTrafficAvailable = false;
     }
 
     /** Receives cumulative counters from libbox's native status stream. */
@@ -78,9 +82,9 @@ public class AlkhalidiVpnService extends VpnService {
     public static boolean isConnected() { return isRunning; }
 
     /**
-     * Returns the counters maintained by the WireGuard backend for the active peer.
-     * These values are actual tunnel traffic totals, not app UID totals or synthetic
-     * speed-test traffic. The snapshot is safe to obtain from Capacitor's plugin thread.
+     * Returns actual cumulative counters from the active VPN engine (WireGuard or
+     * Sing-box), never app UID estimates or synthetic speed-test traffic. The snapshot
+     * is safe to obtain from Capacitor's plugin thread.
      */
     public static TrafficSnapshot getTrafficSnapshot() {
         AlkhalidiVpnService service = activeService;
