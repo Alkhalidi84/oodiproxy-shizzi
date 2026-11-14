@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldOff } from 'lucide-react';
 import { Header } from './components/Header';
 import { PowerSwitch } from './components/PowerSwitch';
+import { ProtocolSelector, VpnEngineChoice } from './components/ProtocolSelector';
 import { StatsCard } from './components/StatsCard';
 import { DeviceInfoBar } from './components/DeviceInfoBar';
 import { TelegramBanner } from './components/TelegramBanner';
@@ -33,6 +34,7 @@ const STORAGE_CONNECTION_LOG_KEY = 'seloomwarp_connection_log_v1';
 
 const STORAGE_RECONNECT_INTENT_KEY = 'nexalink_reconnect_intent_v1';
 const STORAGE_PROXY_PROFILES_KEY = 'nexalink_proxy_profiles_v1';
+const STORAGE_VPN_ENGINE_KEY = 'nexalink_vpn_engine_v1';
 const delay = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 function readReconnectIntent(): boolean {
@@ -187,6 +189,13 @@ export default function App() {
   const [activeProxyId, setActiveProxyId] = useState<string | null>(() => {
     try { return localStorage.getItem('nexalink_active_proxy_id_v1'); } catch { return null; }
   });
+  const [selectedEngine, setSelectedEngine] = useState<VpnEngineChoice>(() => {
+    try {
+      return localStorage.getItem(STORAGE_VPN_ENGINE_KEY) === 'sing-box' ? 'sing-box' : 'wireguard';
+    } catch { return 'wireguard'; }
+  });
+  const selectedEngineRef = useRef<VpnEngineChoice>(selectedEngine);
+  selectedEngineRef.current = selectedEngine;
 
   // Active server ID
   const [activeServerId, setActiveServerId] = useState<string>(() => {
@@ -332,9 +341,12 @@ export default function App() {
           try {
             const server = activeServerRef.current;
             const proxy = activeProxyRef.current;
-            const recovered = proxy
+            const engine = selectedEngineRef.current;
+            const recovered = engine === 'sing-box' && proxy
               ? await connectProxyProfile(proxy, settingsRef.current)
-              : await connectWireGuard(server, settingsRef.current);
+              : engine === 'wireguard'
+                ? await connectWireGuard(server, settingsRef.current)
+                : false;
             if (recovered) {
               if (!settingsRef.current.autoReconnect || !reconnectWantedRef.current
                   || activeServerRef.current.id !== server.id
@@ -696,8 +708,15 @@ export default function App() {
         pingMs: 0,
       });
       try {
-        const connected = activeProxyProfile
-          ? await connectProxyProfile(activeProxyProfile, settings)
+        if (selectedEngine === 'sing-box' && !activeProxyProfile) {
+          setConnectionState('disconnected');
+          setIsProxyProfilesOpen(true);
+          reconnectWantedRef.current = false;
+          try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+          return;
+        }
+        const connected = selectedEngine === 'sing-box'
+          ? await connectProxyProfile(activeProxyProfile!, settings)
           : await connectWireGuard(activeServer, settings);
         if (connected) {
           setConnectionState('connected');
@@ -731,6 +750,9 @@ export default function App() {
 
   // Select server handler
   const handleSelectServer = (server: WireguardServer) => {
+    setSelectedEngine('wireguard');
+    selectedEngineRef.current = 'wireguard';
+    try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'wireguard'); } catch { /* storage may be unavailable */ }
     setActiveServerId(server.id);
     setActiveProxyId(null);
     setIsServerListOpen(false);
@@ -929,6 +951,26 @@ export default function App() {
         />
 
         {/* Central Power Switch button and status pill */}
+        <ProtocolSelector
+          selectedEngine={selectedEngine}
+          disabled={connectionState === 'connecting' || connectionState === 'disconnecting' || connectionState === 'reconnecting'}
+          onSelectEngine={(engine) => {
+            if (engine === selectedEngine) return;
+            reconnectWantedRef.current = false;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+            selectedEngineRef.current = engine;
+            setSelectedEngine(engine);
+            try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, engine); } catch { /* storage may be unavailable */ }
+            if (connectionStateRef.current !== 'disconnected') {
+              setConnectionState('disconnecting');
+              void VpnBridge.disconnect().catch((error) => console.warn('Engine switch disconnect failed:', error)).finally(() => {
+                setConnectionState('disconnected');
+              });
+            }
+            if (engine === 'sing-box' && !activeProxyRef.current) setIsProxyProfilesOpen(true);
+          }}
+        />
+
         <PowerSwitch
           connectionState={connectionState}
           onToggle={handleToggleConnection}
@@ -1013,6 +1055,9 @@ export default function App() {
         onSave={(profile) => {
           setProxyProfiles((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
           setActiveProxyId(profile.id);
+          selectedEngineRef.current = 'sing-box';
+          setSelectedEngine('sing-box');
+          try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'sing-box'); } catch { /* storage may be unavailable */ }
           if (connectionStateRef.current !== 'disconnected') {
             reconnectWantedRef.current = false;
             try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
@@ -1022,6 +1067,9 @@ export default function App() {
         }}
         onSelect={(profile) => {
           setActiveProxyId(profile.id);
+          selectedEngineRef.current = 'sing-box';
+          setSelectedEngine('sing-box');
+          try { localStorage.setItem(STORAGE_VPN_ENGINE_KEY, 'sing-box'); } catch { /* storage may be unavailable */ }
           if (connectionStateRef.current === 'connected' || connectionStateRef.current === 'reconnecting') {
             reconnectWantedRef.current = false;
             try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
