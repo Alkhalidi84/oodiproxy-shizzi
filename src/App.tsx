@@ -515,8 +515,11 @@ export default function App() {
         try {
           const traffic = await VpnBridge.getTrafficStats();
           const capturedAt = performance.now();
-          if (disposed || !traffic.connected) return;
-          if (!traffic.available) { setTrafficStatsAvailable(false); return; }
+          if (disposed) return;
+          if (!traffic.connected || !traffic.available) {
+            setTrafficStatsAvailable(false);
+            return;
+          }
           setTrafficStatsAvailable(true);
           const previous = previousTrafficSampleRef.current;
           const elapsedSeconds = previous ? (capturedAt - previous.capturedAt) / 1000 : 0;
