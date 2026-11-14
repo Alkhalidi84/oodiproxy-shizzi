@@ -248,7 +248,6 @@ class TestNetworkApi(private val context: Context) {
     }
 
     fun setupTestNetwork(interfaceName: String, dnsServers: List<InetAddress>, binder: IBinder) {
-}
 
 class TunHandle(private val delegate: Any) {
 
