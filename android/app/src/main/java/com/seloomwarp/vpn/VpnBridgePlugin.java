@@ -137,6 +137,9 @@ public class VpnBridgePlugin extends Plugin {
                     .setAction(AlkhalidiVpnService.ACTION_CONNECT_SINGBOX);
             put(service, AlkhalidiVpnService.EXTRA_SERVER_NAME, profile.name);
             put(service, AlkhalidiVpnService.EXTRA_CONFIG_JSON, profile.configJson);
+            service.putExtra(AlkhalidiVpnService.EXTRA_BYPASS_LAN,
+                    call.getBoolean("bypassLanRoute", false));
+            service.putExtra(AlkhalidiVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
             Intent permission = VpnService.prepare(activity);
             if (permission != null) {
                 pendingCall = call;
