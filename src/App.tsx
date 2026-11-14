@@ -39,6 +39,16 @@ function readReconnectIntent(): boolean {
   try { return localStorage.getItem(STORAGE_RECONNECT_INTENT_KEY) === 'true'; } catch { return false; }
 }
 
+function normalizeStoredProxyProfiles(value: unknown): SavedProxyProfile[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is SavedProxyProfile =>
+    !!item && typeof item.id === 'string' && typeof item.link === 'string'
+    && ['vless', 'vmess', 'trojan'].includes(item.protocol)
+    && typeof item.name === 'string' && typeof item.server === 'string'
+    && Number.isInteger(item.port) && item.port > 0 && item.port <= 65535
+  ).slice(0, 100);
+}
+
 async function connectProxyProfile(profile: SavedProxyProfile, settings: AppSettings): Promise<boolean> {
   await VpnBridge.connectProxy({
     link: profile.link,
@@ -171,19 +181,8 @@ export default function App() {
   });
 
   // Saved Sing-box profiles are stored separately from WireGuard peers.
-  const [proxyProfiles, setProxyProfiles] = useState<SavedProxyProfile[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_PROXY_PROFILES_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed)) return [];
-      return parsed.filter((item): item is SavedProxyProfile =>
-        !!item && typeof item.id === 'string' && typeof item.link === 'string'
-        && ['vless', 'vmess', 'trojan'].includes(item.protocol)
-        && typeof item.name === 'string' && typeof item.server === 'string'
-        && Number.isInteger(item.port) && item.port > 0 && item.port <= 65535
-      ).slice(0, 100);
-    } catch { return []; }
-  });
+  const [proxyProfiles, setProxyProfiles] = useState<SavedProxyProfile[]>([]);
+  const [proxyProfilesStorageReady, setProxyProfilesStorageReady] = useState(false);
   const [activeProxyId, setActiveProxyId] = useState<string | null>(() => {
     try { return localStorage.getItem('nexalink_active_proxy_id_v1'); } catch { return null; }
   });
@@ -403,10 +402,41 @@ export default function App() {
     }
   }, [servers]);
 
+  // Load credentials from Android Keystore-backed storage. Migrate legacy
+  // WebView localStorage once, then remove the plaintext copy only after save succeeds.
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_PROXY_PROFILES_KEY, JSON.stringify(proxyProfiles)); }
-    catch (error) { console.warn('Proxy profile storage failed:', error); }
-  }, [proxyProfiles]);
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const secure = await VpnBridge.loadSecureProxyProfiles();
+        let rawProfiles: unknown;
+        if (secure.profilesJson) {
+          rawProfiles = JSON.parse(secure.profilesJson);
+        } else {
+          const legacy = localStorage.getItem(STORAGE_PROXY_PROFILES_KEY);
+          rawProfiles = legacy ? JSON.parse(legacy) : [];
+          const migrated = normalizeStoredProxyProfiles(rawProfiles);
+          await VpnBridge.saveSecureProxyProfiles({ profilesJson: JSON.stringify(migrated) });
+        }
+        const restored = normalizeStoredProxyProfiles(rawProfiles);
+        if (!cancelled) {
+          setProxyProfiles(restored);
+          setProxyProfilesStorageReady(true);
+          try { localStorage.removeItem(STORAGE_PROXY_PROFILES_KEY); } catch { /* legacy key may be unavailable */ }
+        }
+      } catch (error) {
+        console.error('Secure proxy profile storage could not be opened; existing data was not overwritten.', error);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!proxyProfilesStorageReady) return;
+    void VpnBridge.saveSecureProxyProfiles({ profilesJson: JSON.stringify(proxyProfiles) })
+      .catch((error) => console.error('Secure proxy profile save failed:', error));
+  }, [proxyProfiles, proxyProfilesStorageReady]);
 
   useEffect(() => {
     try {
