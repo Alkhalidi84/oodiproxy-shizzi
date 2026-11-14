@@ -131,6 +131,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <div className="space-y-2 border-t border-slate-800/80 pt-3">
+            <label className="flex items-center justify-between gap-3 cursor-pointer">
+              <span className="text-xs font-bold text-slate-200">Automatic VPN Reconnect</span>
+              <input
+                type="checkbox"
+                checked={form.autoReconnect}
+                onChange={(event) => setForm({ ...form, autoReconnect: event.target.checked })}
+                className="h-4 w-4 accent-cyan-500"
+              />
+            </label>
+            <p className="text-[10px] leading-relaxed text-slate-500">When enabled, NexaLink will restore a tunnel you previously connected if the native VPN unexpectedly drops. Retries are limited; manual disconnect disables recovery.</p>
+          </div>
+
+          <div className="space-y-2 border-t border-slate-800/80 pt-3">
             <div className="text-right text-xs font-bold text-slate-200">Android VPN Lockdown</div>
             <p className="text-[10px] leading-relaxed text-slate-500">Android controls Always-on VPN and Block connections without VPN. NexaLink cannot silently enable system lockdown; configure it in Android settings.</p>
             <button type="button" onClick={onOpenVpnSettings} className="w-full rounded-xl border border-amber-500/30 bg-amber-950/40 px-3 py-2 text-xs font-bold text-amber-200">
