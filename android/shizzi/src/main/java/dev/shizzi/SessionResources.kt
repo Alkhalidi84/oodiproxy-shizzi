@@ -38,11 +38,27 @@ class SessionResources(
         fileDescriptor = created.fileDescriptor
 
         val name = created.interfaceName
-        testNetworkApi.setupTestNetwork(name, dnsServers, lifetimeToken)
-
-        network = awaitAvailability(name, availabilityTimeoutMs)
-        requestKeepAlive()
-        return name
+        try {
+            testNetworkApi.setupTestNetwork(name, dnsServers, lifetimeToken)
+            network = awaitAvailability(name, availabilityTimeoutMs)
+            requestKeepAlive()
+            return name
+        } catch (failure: Throwable) {
+            // setupTestNetwork may have partially registered the interface before
+            // throwing. Recover its Network handle if it became visible, then unwind
+            // every resource that can safely be released.
+            if (network == null) network = findNetworkOn(name)
+            val cleanupProblems = release()
+            if (cleanupProblems.isNotEmpty()) {
+                failure.addSuppressed(
+                    IllegalStateException("acquire cleanup incomplete: " + cleanupProblems.joinToString("; "))
+                )
+            }
+            throw IllegalStateException(
+                "acquire: failed to provision test network '$name': ${failure.message}",
+                failure,
+            )
+        }
     }
 
     private fun requestKeepAlive() {
@@ -159,36 +175,59 @@ class SessionResources(
         val problems = mutableListOf<String>()
 
         keepAliveCallback?.let { callback ->
-            runCatching { connectivityManager.unregisterNetworkCallback(callback) }
-                .onFailure { problems += "unregisterNetworkCallback: ${it.message}" }
+            try {
+                connectivityManager.unregisterNetworkCallback(callback)
+                keepAliveCallback = null
+            } catch (failure: Throwable) {
+                problems += "unregisterNetworkCallback: ${failure.message}"
+            }
         }
-        keepAliveCallback = null
 
+        // Never close either TUN descriptor or tear down its network while gVisor
+        // may still be reading from the duplicated fd. Keep ownership references
+        // intact so a later cleanup attempt can retry safely.
         datapathSession?.let { session ->
-            runCatching { session.stop() }
-                .onFailure { problems += "datapath.stop: ${it.message}" }
+            try {
+                session.stop()
+                datapathSession = null
+            } catch (failure: Throwable) {
+                problems += "datapath.stop: ${failure.message}"
+                problems.forEach { SessionLog.warn("teardown problem: $it") }
+                return problems
+            }
         }
-        datapathSession = null
 
-        // Close the duplicated descriptor only after gVisor has stopped using it.
         datapathFileDescriptor?.let { descriptor ->
-            runCatching { descriptor.close() }
-                .onFailure { problems += "close(datapath fd): ${it.message}" }
+            try {
+                descriptor.close()
+                datapathFileDescriptor = null
+            } catch (failure: Throwable) {
+                problems += "close(datapath fd): ${failure.message}"
+                problems.forEach { SessionLog.warn("teardown problem: $it") }
+                return problems
+            }
         }
-        datapathFileDescriptor = null
 
         network?.let { acquired ->
-            runCatching { testNetworkApi.teardownTestNetwork(acquired) }
-                .onFailure { problems += "teardownTestNetwork: ${it.message}" }
+            try {
+                testNetworkApi.teardownTestNetwork(acquired)
+                network = null
+            } catch (failure: Throwable) {
+                problems += "teardownTestNetwork: ${failure.message}"
+                problems.forEach { SessionLog.warn("teardown problem: $it") }
+                return problems
+            }
         }
-        network = null
 
         fileDescriptor?.let { descriptor ->
-            runCatching { descriptor.close() }
-                .onFailure { problems += "close(tun fd): ${it.message}" }
+            try {
+                descriptor.close()
+                fileDescriptor = null
+                tun = null
+            } catch (failure: Throwable) {
+                problems += "close(tun fd): ${failure.message}"
+            }
         }
-        fileDescriptor = null
-        tun = null
 
         problems.forEach { SessionLog.warn("teardown problem: $it") }
         return problems
