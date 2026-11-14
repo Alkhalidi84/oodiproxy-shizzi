@@ -33,7 +33,8 @@ final class VpnEngineManager {
         synchronized (lock) {
             if (activeEngine == requested && requested.isRunning()) return;
 
-            // Do not start a second engine if the previous owner cannot stop.
+            // Do not start a second engine if the previous owner cannot stop
+            // or reports a stale running state after stop() returned.
             stopActiveLocked();
 
             try {
@@ -45,10 +46,16 @@ final class VpnEngineManager {
             } catch (Exception startFailure) {
                 try {
                     requested.stop();
+                    if (requested.isRunning()) {
+                        throw new IllegalStateException("VPN engine remained running after rollback: " + requested.id());
+                    }
+                    activeEngine = null;
                 } catch (Exception stopFailure) {
+                    // Keep the uncertain engine as owner. Allowing another
+                    // engine to start could create competing TUN owners.
+                    activeEngine = requested;
                     startFailure.addSuppressed(stopFailure);
                 }
-                activeEngine = null;
                 throw startFailure;
             }
         }
@@ -63,9 +70,11 @@ final class VpnEngineManager {
     private void stopActiveLocked() throws Exception {
         if (activeEngine == null) return;
         Engine previous = activeEngine;
-        // Retain ownership if stop fails: starting another engine would risk
-        // two services believing they own the same Android VPN lifecycle.
+        // Retain ownership if stop fails or the engine still reports running.
         previous.stop();
+        if (previous.isRunning()) {
+            throw new IllegalStateException("VPN engine remained running after stop: " + previous.id());
+        }
         activeEngine = null;
     }
 }
