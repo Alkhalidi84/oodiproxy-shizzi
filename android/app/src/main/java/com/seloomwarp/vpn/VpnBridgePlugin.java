@@ -32,7 +32,7 @@ public class VpnBridgePlugin extends Plugin {
     @PluginMethod
     public void isVpnConnected(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("connected", SeloomVpnService.isConnected());
+        result.put("connected", AlkhalidiVpnService.isConnected());
         call.resolve(result);
     }
 
@@ -42,7 +42,7 @@ public class VpnBridgePlugin extends Plugin {
      */
     @PluginMethod
     public void getTrafficStats(PluginCall call) {
-        SeloomVpnService.TrafficSnapshot snapshot = SeloomVpnService.getTrafficSnapshot();
+        AlkhalidiVpnService.TrafficSnapshot snapshot = AlkhalidiVpnService.getTrafficSnapshot();
         JSObject result = new JSObject();
         result.put("connected", snapshot.connected);
         result.put("downloadBytes", snapshot.downloadBytes);
@@ -115,21 +115,21 @@ public class VpnBridgePlugin extends Plugin {
             pendingIntent = null;
         }
 
-        Intent service = new Intent(activity, SeloomVpnService.class)
-                .setAction(SeloomVpnService.ACTION_CONNECT);
-        put(service, SeloomVpnService.EXTRA_SERVER_NAME, call.getString("serverName", "SeloomWarp WireGuard"));
-        put(service, SeloomVpnService.EXTRA_ENDPOINT, endpoint);
-        put(service, SeloomVpnService.EXTRA_DNS, call.getString("dns", "1.1.1.1,1.0.0.1"));
-        put(service, SeloomVpnService.EXTRA_ADDRESS, call.getString("address", "172.16.0.2/32"));
-        put(service, SeloomVpnService.EXTRA_PRIVATE_KEY, privateKey);
-        put(service, SeloomVpnService.EXTRA_PUBLIC_KEY, publicKey);
+        Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                .setAction(AlkhalidiVpnService.ACTION_CONNECT);
+        put(service, AlkhalidiVpnService.EXTRA_SERVER_NAME, call.getString("serverName", "SeloomWarp WireGuard"));
+        put(service, AlkhalidiVpnService.EXTRA_ENDPOINT, endpoint);
+        put(service, AlkhalidiVpnService.EXTRA_DNS, call.getString("dns", "1.1.1.1,1.0.0.1"));
+        put(service, AlkhalidiVpnService.EXTRA_ADDRESS, call.getString("address", "172.16.0.2/32"));
+        put(service, AlkhalidiVpnService.EXTRA_PRIVATE_KEY, privateKey);
+        put(service, AlkhalidiVpnService.EXTRA_PUBLIC_KEY, publicKey);
         // IPv6 must be explicitly present in the peer configuration. Routing
         // ::/0 by default breaks IPv6-only destinations on IPv4-only peers.
-        put(service, SeloomVpnService.EXTRA_ALLOWED_IPS, call.getString("allowedIPs", "0.0.0.0/0"));
-        service.putExtra(SeloomVpnService.EXTRA_MTU, call.getInt("mtu", 1280));
-        service.putExtra(SeloomVpnService.EXTRA_KEEPALIVE, call.getInt("keepalive", 25));
-        service.putExtra(SeloomVpnService.EXTRA_BYPASS_LAN, call.getBoolean("bypassLanRoute", false));
-        service.putExtra(SeloomVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
+        put(service, AlkhalidiVpnService.EXTRA_ALLOWED_IPS, call.getString("allowedIPs", "0.0.0.0/0"));
+        service.putExtra(AlkhalidiVpnService.EXTRA_MTU, call.getInt("mtu", 1280));
+        service.putExtra(AlkhalidiVpnService.EXTRA_KEEPALIVE, call.getInt("keepalive", 25));
+        service.putExtra(AlkhalidiVpnService.EXTRA_BYPASS_LAN, call.getBoolean("bypassLanRoute", false));
+        service.putExtra(AlkhalidiVpnService.EXTRA_EXCLUDED_APPLICATIONS, joinApplications(call));
 
         Intent permission = VpnService.prepare(activity);
         if (permission != null) {
@@ -164,8 +164,8 @@ public class VpnBridgePlugin extends Plugin {
             return;
         }
         try {
-            Intent service = new Intent(activity, SeloomVpnService.class)
-                    .setAction(SeloomVpnService.ACTION_DISCONNECT);
+            Intent service = new Intent(activity, AlkhalidiVpnService.class)
+                    .setAction(AlkhalidiVpnService.ACTION_DISCONNECT);
             activity.startService(service);
             JSObject result = new JSObject();
             result.put("status", "disconnected");

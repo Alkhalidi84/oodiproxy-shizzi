@@ -21,7 +21,7 @@ import java.io.StringReader;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public class SeloomVpnService extends VpnService {
+public class AlkhalidiVpnService extends VpnService {
     public static final String ACTION_CONNECT = "com.seloomwarp.vpn.CONNECT";
     public static final String ACTION_DISCONNECT = "com.seloomwarp.vpn.DISCONNECT";
     public static final String EXTRA_SERVER_NAME = "server_name";
@@ -39,7 +39,7 @@ public class SeloomVpnService extends VpnService {
     private static final String CHANNEL_ID = "seloom_vpn_status_channel";
     private static final int NOTIFICATION_ID = 1001;
     private static volatile boolean isRunning = false;
-    private static volatile SeloomVpnService activeService;
+    private static volatile AlkhalidiVpnService activeService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Object tunnelLock = new Object();
     private final VpnEngineManager engineManager = new VpnEngineManager();
@@ -56,7 +56,7 @@ public class SeloomVpnService extends VpnService {
      * speed-test traffic. The snapshot is safe to obtain from Capacitor's plugin thread.
      */
     public static TrafficSnapshot getTrafficSnapshot() {
-        SeloomVpnService service = activeService;
+        AlkhalidiVpnService service = activeService;
         return service == null ? TrafficSnapshot.disconnected() : service.readTrafficSnapshot();
     }
 

@@ -47,7 +47,7 @@
         <!-- The app-owned service is the only entry point. The WireGuard tunnel
              library contributes its internal service through its own manifest. -->
         <service
-            android:name=".SeloomVpnService"
+            android:name=".AlkhalidiVpnService"
             android:permission="android.permission.BIND_VPN_SERVICE"
             android:foregroundServiceType="specialUse"
             android:exported="false">
