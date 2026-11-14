@@ -233,6 +233,7 @@ export default function App() {
               setConnectionState('connected');
               return;
             }
+            await VpnBridge.disconnect().catch(() => undefined);
           } catch (error) {
             console.warn('Automatic VPN reconnect attempt failed:', error);
           }
@@ -255,7 +256,7 @@ export default function App() {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [settings.autoReconnect, activeServerId]);
+  }, [settings, activeServerId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -526,6 +527,8 @@ export default function App() {
   const handleAddServer = (newServer: WireguardServer, activateImmediately: boolean) => {
     setServers((prev) => [newServer, ...prev]);
     if (activateImmediately) {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       setActiveServerId(newServer.id);
       // Selecting a server must not claim a native VPN connection. The tunnel
       // is started only by the power button after the user grants permission.
@@ -537,7 +540,9 @@ export default function App() {
   const handleSelectServer = (server: WireguardServer) => {
     setActiveServerId(server.id);
     setIsServerListOpen(false);
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       // Do not swap credentials underneath a live WireGuard tunnel.
       void VpnBridge.disconnect().catch(() => undefined);
       setConnectionState('disconnected');
@@ -577,6 +582,8 @@ export default function App() {
 
   // Reset to default servers
   const handleResetServers = () => {
+    reconnectWantedRef.current = false;
+    try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
     const defaults = getInitialServers();
     setServers(defaults);
     setActiveServerId(defaults[0].id);
@@ -663,7 +670,9 @@ export default function App() {
       setServers((prev) => [balyServer!, ...prev]);
     }
     setActiveServerId(balyServer.id);
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
+      reconnectWantedRef.current = false;
+      try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       void VpnBridge.disconnect().catch(() => undefined);
       setConnectionState('disconnected');
     }
