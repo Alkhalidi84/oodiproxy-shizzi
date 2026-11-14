@@ -64,6 +64,7 @@ public final class SingBoxProfileParser {
         if (host == null || host.isEmpty() || port < 1 || port > 65535) {
             throw new IllegalArgumentException("Proxy link must include a valid server and port");
         }
+        validateServerHost(host, scheme);
         Map<String, String> query = query(uri.getRawQuery());
         String tag = uri.getFragment() == null ? scheme + "-" + host : decode(uri.getFragment());
         String user = uri.getRawUserInfo() == null ? "" : decode(uri.getRawUserInfo());
@@ -92,9 +93,10 @@ public final class SingBoxProfileParser {
 
     private static Profile parseVmess(String encoded) throws JSONException {
         String payload = encoded.trim();
-        // Share links commonly omit padding. Try strict standard Base64 first,
-        // then URL-safe Base64; the MIME decoder is a final compatibility path
-        // for legacy links containing line breaks.
+        // Share links commonly omit padding and may contain line breaks.
+        // Strip whitespace only; MIME decoding is intentionally avoided because
+        // it silently ignores arbitrary invalid characters in hostile input.
+        payload = payload.replaceAll("\\s", "");
         while (payload.length() % 4 != 0) payload += "=";
         byte[] bytes;
         try {
@@ -103,13 +105,8 @@ public final class SingBoxProfileParser {
             try {
                 bytes = Base64.getUrlDecoder().decode(payload);
             } catch (IllegalArgumentException urlSafeError) {
-                try {
-                    bytes = Base64.getMimeDecoder().decode(payload);
-                } catch (IllegalArgumentException mimeError) {
-                    mimeError.addSuppressed(standardError);
-                    mimeError.addSuppressed(urlSafeError);
-                    throw new IllegalArgumentException("Invalid VMess base64 payload", mimeError);
-                }
+                urlSafeError.addSuppressed(standardError);
+                throw new IllegalArgumentException("Invalid VMess base64 payload", urlSafeError);
             }
         }
         final String decoded = new String(bytes, StandardCharsets.UTF_8);
@@ -125,6 +122,7 @@ public final class SingBoxProfileParser {
         if (host.isEmpty() || port == 0 || uuid.isEmpty()) {
             throw new IllegalArgumentException("VMess profile is missing server, port or UUID");
         }
+        validateServerHost(host, "VMess");
         validateUuid(uuid, "VMess");
         JSONObject outbound = new JSONObject();
         outbound.put("type", "vmess");
@@ -268,6 +266,14 @@ public final class SingBoxProfileParser {
             return URLDecoder.decode(value.replace("+", "%2B"), "UTF-8");
         } catch (Exception ignored) {
             return value;
+        }
+    }
+
+    private static void validateServerHost(String host, String protocol) {
+        if (host == null || host.isEmpty() || host.length() > 253
+                || !host.matches("[A-Za-z0-9._:%\\-\\[\\]]+")
+                || host.startsWith(".") || host.endsWith(".")) {
+            throw new IllegalArgumentException(protocol + " profile contains an invalid server host");
         }
     }
 
