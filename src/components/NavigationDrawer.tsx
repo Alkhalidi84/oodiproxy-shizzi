@@ -6,6 +6,7 @@ interface NavigationDrawerProps {
   onClose: () => void;
   onOpenServers: () => void;
   onOpenAddServer: () => void;
+  onOpenProxyProfiles: () => void;
   onOpenExport: () => void;
   onOpenSettings: () => void;
   onOpenDiagnostics: () => void;
@@ -21,6 +22,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onClose,
   onOpenServers,
   onOpenAddServer,
+  onOpenProxyProfiles,
   onOpenExport,
   onOpenSettings,
   onOpenDiagnostics,
@@ -97,6 +99,20 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <div className="flex items-center gap-2.5">
               <span>Add WireGuard Server</span>
               <Plus className="w-4 h-4 text-cyan-400" />
+            </div>
+          </button>
+
+          <button
+            onClick={() => {
+              onClose();
+              onOpenProxyProfiles();
+            }}
+            className="w-full p-3 rounded-xl hover:bg-violet-950/60 text-slate-200 hover:text-violet-300 flex items-center justify-between text-xs font-bold transition-colors"
+          >
+            <span className="text-violet-300 text-[10px] bg-violet-950/70 px-1.5 py-0.5 rounded border border-violet-500/30">SING-BOX</span>
+            <div className="flex items-center gap-2.5">
+              <span>Proxy Profiles</span>
+              <Zap className="w-4 h-4 text-violet-400" />
             </div>
           </button>
 
