@@ -25,8 +25,10 @@ class TetherSession(private val context: Context) {
     private val hotspotClients = HotspotClientManager(context)
     private val vpn = VpnUpstream(context) { problem -> tearDownAfter(problem) }
 
+    @get:Synchronized
     val isActive: Boolean get() = state == SessionState.ACTIVE
 
+    @Synchronized
     fun start(mode: VpnMode = VpnMode.AUTO): String {
         if (isActive) return status()
 
@@ -160,6 +162,7 @@ class TetherSession(private val context: Context) {
     private fun liveUpstreams(owned: String): List<String> =
         inspector.observe().liveInterfaceNames(owned)
 
+    @Synchronized
     fun stop(): String {
         watchdog?.stop()
         watchdog = null
@@ -177,15 +180,18 @@ class TetherSession(private val context: Context) {
 
         interfaceName = null
         activeSince = 0
-        state = if (downstreamProblem == null) SessionState.IDLE else SessionState.ERROR
-        detail = downstreamProblem ?: "stopped"
-
-        when (downstreamProblem) {
-            null -> SessionLog.info("session stopped; downstream confirmed down")
-            else -> SessionLog.error("teardown: $downstreamProblem")
+        val teardownProblems = buildList {
+            downstreamProblem?.let(::add)
+            addAll(releaseProblems)
         }
-        if (releaseProblems.isNotEmpty()) {
-            SessionLog.warn("${releaseProblems.size} resource(s) not released cleanly")
+        state = if (teardownProblems.isEmpty()) SessionState.IDLE else SessionState.ERROR
+        detail = if (teardownProblems.isEmpty()) "stopped"
+            else teardownProblems.joinToString("; ")
+
+        if (teardownProblems.isEmpty()) {
+            SessionLog.info("session stopped; downstream and owned resources released")
+        } else {
+            SessionLog.error("teardown incomplete: ${teardownProblems.joinToString("; ")}")
         }
         summary?.let(SessionLog::info)
         return status()
@@ -215,6 +221,7 @@ class TetherSession(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun status(): String = JSONObject().apply {
         put("state", state.name)
         put("detail", detail)
@@ -231,6 +238,7 @@ class TetherSession(private val context: Context) {
         put("clientInventory", if (isActive) hotspotClients.snapshot(datapathStats) else JSONObject())
     }.toString()
 
+    @Synchronized
     fun setClientBlocked(macAddress: String, blocked: Boolean): String =
         hotspotClients.setBlocked(macAddress, blocked).toString()
 
