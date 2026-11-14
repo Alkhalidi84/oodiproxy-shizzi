@@ -51,6 +51,15 @@ The application interface is English-first and uses a left-to-right layout.
 - Application exclusions for the WireGuard tunnel.
 - Local storage for server profiles, settings, and connection history.
 
+## Architecture and validation
+
+- [VPN engine architecture](docs/VPN_ENGINE_ARCHITECTURE.md) describes the single-active-engine lifecycle and the separation between phone VPN and Shizuku tethering.
+- [Sing-box integration and release gates](docs/SING_BOX_INTEGRATION.md) documents the implemented libbox adapter, supported profile-link mapping, platform limitations, and device validation still required.
+
+CI verifies source compilation, unit tests, native dependency packaging, and APK structure. It does not replace physical-device testing. Before a production release, validate real proxy endpoints, WireGuard/Sing-box switching, TUN cleanup, network handover, DNS and IPv6 behavior, and tethered-client TCP/UDP traffic on the target Android/OEM devices.
+
+The current CI APK is ARM64-only. Protocol link parsing is not a guarantee that every V2Ray/Xray transport or server extension is supported. Per-device tethering byte counts remain best-effort and incomplete on paths that bypass the userspace datapath.
+
 ## Requirements
 
 - Android 11 (API 30) or later.
