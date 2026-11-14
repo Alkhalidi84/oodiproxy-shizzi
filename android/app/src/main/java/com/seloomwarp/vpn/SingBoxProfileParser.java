@@ -1,6 +1,6 @@
 package com.seloomwarp.vpn;
 
-import android.util.Base64;
+import java.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -87,18 +87,27 @@ public final class SingBoxProfileParser {
 
     private static Profile parseVmess(String encoded) throws JSONException {
         String payload = encoded.trim();
+        // Share links commonly omit padding. Try strict standard Base64 first,
+        // then URL-safe Base64; the MIME decoder is a final compatibility path
+        // for legacy links containing line breaks.
         while (payload.length() % 4 != 0) payload += "=";
-        final String decoded;
+        final byte[] bytes;
         try {
-            decoded = new String(Base64.decode(payload, Base64.DEFAULT), StandardCharsets.UTF_8);
-        } catch (RuntimeException standardError) {
+            bytes = Base64.getDecoder().decode(payload);
+        } catch (IllegalArgumentException standardError) {
             try {
-                decoded = new String(Base64.decode(payload, Base64.URL_SAFE | Base64.NO_WRAP), StandardCharsets.UTF_8);
-            } catch (RuntimeException urlSafeError) {
-                urlSafeError.addSuppressed(standardError);
-                throw new IllegalArgumentException("Invalid VMess base64 payload", urlSafeError);
+                bytes = Base64.getUrlDecoder().decode(payload);
+            } catch (IllegalArgumentException urlSafeError) {
+                try {
+                    bytes = Base64.getMimeDecoder().decode(payload);
+                } catch (IllegalArgumentException mimeError) {
+                    mimeError.addSuppressed(standardError);
+                    mimeError.addSuppressed(urlSafeError);
+                    throw new IllegalArgumentException("Invalid VMess base64 payload", mimeError);
+                }
             }
         }
+        final String decoded = new String(bytes, StandardCharsets.UTF_8);
         JSONObject source;
         try {
             source = new JSONObject(decoded);
