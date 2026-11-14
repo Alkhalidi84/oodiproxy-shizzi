@@ -42,6 +42,7 @@ public class SeloomVpnService extends VpnService {
     private static volatile SeloomVpnService activeService;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Object tunnelLock = new Object();
+    private final VpnEngineManager engineManager = new VpnEngineManager();
     private volatile boolean destroyed;
     private volatile boolean foregroundStarted;
     private Backend backend;
@@ -116,8 +117,18 @@ public class SeloomVpnService extends VpnService {
     }
 
     private void startVpn(Intent intent) {
+        try {
+            engineManager.start(new WireGuardEngine(intent));
+        } catch (Exception error) {
+            synchronized (tunnelLock) {
+                isRunning = backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+            }
+            if (!isRunning) stopVpnAfterEngineStopped();
+        }
+    }
+
+    private void startWireGuardTunnel(Intent intent) throws Exception {
         synchronized (tunnelLock) {
-            try {
                 String privateKey = required(intent, EXTRA_PRIVATE_KEY);
                 String publicKey = required(intent, EXTRA_PUBLIC_KEY);
                 String endpoint = required(intent, EXTRA_ENDPOINT);
@@ -155,27 +166,42 @@ public class SeloomVpnService extends VpnService {
                 tunnel = new AppTunnel(tunnelName);
                 backend.setState(tunnel, State.UP, config);
                 isRunning = backend.getState(tunnel) == State.UP;
-                if (!isRunning) stopVpn();
-            } catch (Throwable error) {
-                isRunning = false;
-                try { if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null); } catch (Throwable ignored) {}
-                tunnel = null;
-                stopVpn();
+                if (!isRunning) throw new IllegalStateException("WireGuard backend did not enter UP state");
             }
         }
     }
 
     private void stopVpn() {
         try {
-            if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null);
-        } catch (Throwable ignored) {}
-        tunnel = null;
+            engineManager.stop();
+            stopVpnAfterEngineStopped();
+        } catch (Exception error) {
+            synchronized (tunnelLock) {
+                isRunning = backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+            }
+        }
+    }
+
+    private void stopVpnAfterEngineStopped() {
         isRunning = false;
         if (foregroundStarted) {
             try { stopForeground(true); } catch (Throwable ignored) {}
             foregroundStarted = false;
         }
         stopSelf();
+    }
+
+    private void stopWireGuardTunnel() throws Exception {
+        synchronized (tunnelLock) {
+            if (backend != null && tunnel != null) {
+                backend.setState(tunnel, State.DOWN, null);
+                if (backend.getState(tunnel) != State.DOWN) {
+                    throw new IllegalStateException("WireGuard tunnel did not enter DOWN state");
+                }
+            }
+            tunnel = null;
+            isRunning = false;
+        }
     }
 
     private TrafficSnapshot readTrafficSnapshot() {
@@ -243,6 +269,7 @@ public class SeloomVpnService extends VpnService {
 
     @Override public void onDestroy() {
         destroyed = true;
+        try { engineManager.stop(); } catch (Exception ignored) {}
         try { if (backend != null && tunnel != null) backend.setState(tunnel, State.DOWN, null); }
         catch (Throwable ignored) {}
         tunnel = null;
@@ -277,6 +304,19 @@ public class SeloomVpnService extends VpnService {
             .setContentText("جاري الاتصال عبر " + (serverName == null ? "WireGuard" : serverName))
             .setSmallIcon(android.R.drawable.ic_lock_lock).setContentIntent(pending).setOngoing(true).setPriority(NotificationCompat.PRIORITY_LOW).build();
     }
+    private final class WireGuardEngine implements VpnEngineManager.Engine {
+        private final Intent connectIntent;
+        WireGuardEngine(Intent connectIntent) { this.connectIntent = new Intent(connectIntent); }
+        @Override public String id() { return "wireguard"; }
+        @Override public void start() throws Exception { startWireGuardTunnel(connectIntent); }
+        @Override public void stop() throws Exception { stopWireGuardTunnel(); }
+        @Override public boolean isRunning() {
+            synchronized (tunnelLock) {
+                return backend != null && tunnel != null && backend.getState(tunnel) == State.UP;
+            }
+        }
+    }
+
     private static final class AppTunnel implements Tunnel {
         private final String name;
         AppTunnel(String name) { this.name = name; }
