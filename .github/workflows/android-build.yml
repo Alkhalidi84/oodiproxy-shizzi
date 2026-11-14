@@ -222,6 +222,23 @@ jobs:
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
 
+      - name: Verify Android APK package and native ABI
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          test -s "$APK"
+          "$AAPT" dump badging "$APK" | grep -F "package: name='com.oodiproxyseloom1.shizzi' versionCode='17' versionName='2.2.0'"
+          unzip -tq "$APK"
+          unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libbox.so'
+          unzip -Z1 "$APK" | grep -Fxq 'lib/arm64-v8a/libwg-go.so'
+          if unzip -Z1 "$APK" | grep -Eq '^lib/(armeabi-v7a|x86|x86_64)/'; then
+            echo "Unexpected native ABI packaged in the ARM64-only APK" >&2
+            exit 1
+          fi
+          echo "Verified APK package identity, Sing-box/WireGuard ARM64 libraries, and ZIP integrity."
+          sha256sum "$APK"
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
