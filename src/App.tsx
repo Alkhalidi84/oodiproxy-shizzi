@@ -900,6 +900,12 @@ export default function App() {
         onSave={(profile) => {
           setProxyProfiles((current) => [profile, ...current.filter((item) => item.id !== profile.id)]);
           setActiveProxyId(profile.id);
+          if (connectionStateRef.current !== 'disconnected') {
+            reconnectWantedRef.current = false;
+            try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+            void VpnBridge.disconnect().catch(() => undefined);
+            setConnectionState('disconnected');
+          }
         }}
         onSelect={(profile) => {
           setActiveProxyId(profile.id);
