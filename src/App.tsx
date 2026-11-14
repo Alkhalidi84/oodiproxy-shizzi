@@ -268,6 +268,12 @@ export default function App() {
   const activeProxyProfile = proxyProfiles.find((profile) => profile.id === activeProxyId) || null;
   const activeProxyRef = useRef<SavedProxyProfile | null>(activeProxyProfile);
   activeProxyRef.current = activeProxyProfile;
+
+  useEffect(() => {
+    if (activeProxyId && !proxyProfiles.some((profile) => profile.id === activeProxyId)) {
+      setActiveProxyId(null);
+    }
+  }, [activeProxyId, proxyProfiles]);
   const activeServerRef = useRef(activeServer);
   activeServerRef.current = activeServer;
   const settingsRef = useRef(settings);
@@ -900,7 +906,15 @@ export default function App() {
         }}
         onDelete={(id) => {
           setProxyProfiles((current) => current.filter((profile) => profile.id !== id));
-          if (activeProxyId === id) setActiveProxyId(null);
+          if (activeProxyId === id) {
+            setActiveProxyId(null);
+            if (connectionStateRef.current === 'connected' || connectionStateRef.current === 'reconnecting') {
+              reconnectWantedRef.current = false;
+              try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
+              void VpnBridge.disconnect().catch(() => undefined);
+              setConnectionState('disconnected');
+            }
+          }
         }}
       />
 
