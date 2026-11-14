@@ -725,8 +725,10 @@ export default function App() {
       formatVersion: 1,
       createdAt: new Date().toISOString(),
       servers,
+      proxyProfiles,
       settings,
       activeServerId,
+      activeProxyId,
     };
     const blob = await encryptBackup(payload, password);
     const url = URL.createObjectURL(blob);
@@ -744,8 +746,10 @@ export default function App() {
     const payload = await decryptBackup(file, password) as {
       formatVersion?: number;
       servers?: unknown;
+      proxyProfiles?: unknown;
       settings?: unknown;
       activeServerId?: unknown;
+      activeProxyId?: unknown;
     };
     if (payload.formatVersion !== 1 || !Array.isArray(payload.servers) ||
         payload.servers.length === 0 || payload.servers.length > 100) {
@@ -758,12 +762,54 @@ export default function App() {
     if (new Set(importedServers.map((server) => server.id)).size !== importedServers.length) {
       throw new Error('The backup contains duplicate server IDs.');
     }
+    const importedProxyProfiles: SavedProxyProfile[] = [];
+    if (payload.proxyProfiles !== undefined) {
+      if (!Array.isArray(payload.proxyProfiles) || payload.proxyProfiles.length > 100) {
+        throw new Error('The backup contains an invalid proxy profile list (maximum 100).');
+      }
+      const seenProxyIds = new Set<string>();
+      for (const entry of payload.proxyProfiles) {
+        if (!entry || typeof entry !== 'object') {
+          throw new Error('The backup contains an invalid proxy profile entry.');
+        }
+        const candidate = entry as Partial<SavedProxyProfile>;
+        if (typeof candidate.id !== 'string' || candidate.id.length < 1 || candidate.id.length > 128
+            || seenProxyIds.has(candidate.id)
+            || typeof candidate.link !== 'string' || candidate.link.length < 1 || candidate.link.length > 16384
+            || !['vless', 'vmess', 'trojan'].includes(candidate.protocol || '')
+            || !Number.isFinite(candidate.createdAt)) {
+          throw new Error('The backup contains an invalid or duplicate proxy profile.');
+        }
+        // Re-parse each credential-bearing URI in the native parser. Never trust
+        // display metadata or config JSON supplied by an imported backup.
+        const parsed = await VpnBridge.parseProxyProfile({ link: candidate.link });
+        if (parsed.protocol !== candidate.protocol) {
+          throw new Error('A proxy profile protocol does not match its share link.');
+        }
+        importedProxyProfiles.push({
+          id: candidate.id,
+          link: candidate.link,
+          createdAt: Number(candidate.createdAt),
+          protocol: parsed.protocol,
+          name: parsed.name,
+          server: parsed.server,
+          port: parsed.port,
+        });
+        seenProxyIds.add(candidate.id);
+      }
+    }
     const importedSettings = sanitizeBackupSettings(payload.settings, settings);
     const nextActiveId = typeof payload.activeServerId === 'string'
       && importedServers.some((server) => server.id === payload.activeServerId)
       ? payload.activeServerId
       : importedServers[0].id;
+    const nextActiveProxyId = typeof payload.activeProxyId === 'string'
+      && importedProxyProfiles.some((profile) => profile.id === payload.activeProxyId)
+      ? payload.activeProxyId
+      : null;
     setServers(importedServers);
+    setProxyProfiles(importedProxyProfiles);
+    setActiveProxyId(nextActiveProxyId);
     setSettings(importedSettings);
     reconnectWantedRef.current = false;
     try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
