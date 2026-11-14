@@ -47,6 +47,7 @@ export interface VpnBridgePlugin {
 
 const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
   web: {
+    parseProxyProfile: async () => { throw new Error('Proxy profile parsing is available in the NexaLink Android app.'); },
     isVpnConnected: async () => ({ connected: false }),
     getTrafficStats: async () => ({ connected: false, downloadBytes: 0, uploadBytes: 0, latestHandshakeEpochMs: 0 }),
     listApplications: async () => ({ applications: [] }),
