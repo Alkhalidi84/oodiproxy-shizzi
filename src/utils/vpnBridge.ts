@@ -25,6 +25,7 @@ export interface VpnTrafficStats {
   downloadBytes: number;
   uploadBytes: number;
   latestHandshakeEpochMs: number;
+  available: boolean;
 }
 
 export interface ParsedProxyProfile {
@@ -50,7 +51,7 @@ const VpnBridge = registerPlugin<VpnBridgePlugin>('VpnBridge', {
   web: {
     parseProxyProfile: async () => { throw new Error('Proxy profile parsing is available in the NexaLink Android app.'); },
     isVpnConnected: async () => ({ connected: false }),
-    getTrafficStats: async () => ({ connected: false, downloadBytes: 0, uploadBytes: 0, latestHandshakeEpochMs: 0 }),
+    getTrafficStats: async () => ({ connected: false, downloadBytes: 0, uploadBytes: 0, latestHandshakeEpochMs: 0, available: false }),
     listApplications: async () => ({ applications: [] }),
     // Browser preview has no Android VpnService. Never report a fake connection.
     connect: async () => { throw new Error('VPN connections are available in the NexaLink Android app.'); },
