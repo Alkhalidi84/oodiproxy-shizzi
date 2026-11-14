@@ -15,6 +15,10 @@ class SessionResources(
 
     private var tun: TunHandle? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
+    // The Go/gVisor endpoint borrows its fd and requires it to stay open until
+    // the endpoint has stopped. Keep a dedicated duplicate so the framework-
+    // owned TestNetworkInterface descriptor is never handed to native code.
+    private var datapathFileDescriptor: ParcelFileDescriptor? = null
     private var network: Network? = null
     private var datapathSession: DatapathSession? = null
     private var keepAliveCallback: ConnectivityManager.NetworkCallback? = null
@@ -65,14 +69,43 @@ class SessionResources(
         val descriptor = fileDescriptor
             ?: error("startDatapath: no TUN fd; acquire() must succeed first")
 
-        datapathSession = runCatching { Datapath.start(descriptor.fd.toLong(), mtu.toLong()) }
-            .getOrElse { failure ->
-                throw IllegalStateException(
-                    "startDatapath: userspace stack failed to attach to fd " +
-                        "${descriptor.fd} (mtu=$mtu)",
-                    failure,
-                )
-            }
+        check(datapathSession == null) {
+            "startDatapath: datapath is already attached"
+        }
+
+        val nativeDescriptor = try {
+            ParcelFileDescriptor.dup(descriptor.fileDescriptor)
+        } catch (failure: Throwable) {
+            throw IllegalStateException(
+                "startDatapath: could not duplicate TUN fd ${descriptor.fd}: " +
+                    describeFailure(failure),
+                failure,
+            )
+        }
+
+        try {
+            datapathSession = Datapath.start(nativeDescriptor.fd.toLong(), mtu.toLong())
+            datapathFileDescriptor = nativeDescriptor
+        } catch (failure: Throwable) {
+            runCatching { nativeDescriptor.close() }
+            throw IllegalStateException(
+                "startDatapath: userspace stack failed to attach to duplicated fd " +
+                    "${nativeDescriptor.fd} (original fd=${descriptor.fd}, mtu=$mtu): " +
+                    describeFailure(failure),
+                failure,
+            )
+        }
+    }
+
+    private fun describeFailure(failure: Throwable): String {
+        val parts = mutableListOf<String>()
+        var current: Throwable? = failure
+        repeat(5) {
+            val item = current ?: return@repeat
+            parts += "${item.javaClass.simpleName}: ${item.message ?: "(no message)"}"
+            current = item.cause
+        }
+        return parts.joinToString(" <- ")
     }
 
     fun datapathStatsJson(): String? = runCatching { datapathSession?.statsJSON() }.getOrNull()
@@ -113,6 +146,13 @@ class SessionResources(
                 .onFailure { problems += "datapath.stop: ${it.message}" }
         }
         datapathSession = null
+
+        // Close the duplicated descriptor only after gVisor has stopped using it.
+        datapathFileDescriptor?.let { descriptor ->
+            runCatching { descriptor.close() }
+                .onFailure { problems += "close(datapath fd): ${it.message}" }
+        }
+        datapathFileDescriptor = null
 
         network?.let { acquired ->
             runCatching { testNetworkApi.teardownTestNetwork(acquired) }
