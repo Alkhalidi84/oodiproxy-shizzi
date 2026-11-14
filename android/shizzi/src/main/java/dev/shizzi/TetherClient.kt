@@ -310,7 +310,7 @@ class TetherClient {
     }
 
     suspend fun stop(): String = withContext(Dispatchers.IO) {
-        val bound = service()
+        val bound = service(allowExistingWithoutShizuku = true)
         verifyContract(bound)
         bound.stop()
     }
