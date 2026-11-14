@@ -13,6 +13,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 public class SingBoxProfileParserTest {
+    @Test public void rejectsVmessPayloadWithIgnoredGarbageCharacters() {
+        assertThrows(IllegalArgumentException.class,
+                () -> SingBoxProfileParser.parse("vmess://eyJ2IjoiMiJ9!"));
+    }
+
+    @Test public void rejectsVmessPayloadWithInvalidUtf8Json() {
+        String encoded = Base64.getEncoder().encodeToString(
+                "not-json".getBytes(StandardCharsets.UTF_8));
+        assertThrows(IllegalArgumentException.class,
+                () -> SingBoxProfileParser.parse("vmess://" + encoded));
+    }
+
     @Test public void rejectsOversizedShareLinks() {
         assertThrows(IllegalArgumentException.class,
                 () -> SingBoxProfileParser.parse("vless://" + "a".repeat(16 * 1024)));
