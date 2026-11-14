@@ -670,12 +670,16 @@ export default function App() {
       settings?: unknown;
       activeServerId?: unknown;
     };
-    if (payload.formatVersion !== 1 || !Array.isArray(payload.servers)) {
-      throw new Error('The backup payload is incomplete or unsupported.');
+    if (payload.formatVersion !== 1 || !Array.isArray(payload.servers) ||
+        payload.servers.length === 0 || payload.servers.length > 100) {
+      throw new Error('The backup payload is incomplete, unsupported, or contains too many servers (maximum 100).');
     }
     const importedServers = payload.servers.filter(isValidBackupServer);
-    if (importedServers.length === 0) {
-      throw new Error('The backup does not contain a valid WireGuard server.');
+    if (importedServers.length !== payload.servers.length) {
+      throw new Error('The backup contains an invalid WireGuard server entry.');
+    }
+    if (new Set(importedServers.map((server) => server.id)).size !== importedServers.length) {
+      throw new Error('The backup contains duplicate server IDs.');
     }
     const importedSettings = sanitizeBackupSettings(payload.settings, settings);
     const nextActiveId = typeof payload.activeServerId === 'string'
