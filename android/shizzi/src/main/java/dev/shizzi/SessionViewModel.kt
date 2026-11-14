@@ -67,8 +67,6 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     detail = intent.getStringExtra(Automation.EXTRA_DETAIL).orEmpty(),
                     interfaceName = intent.getStringExtra(Automation.EXTRA_INTERFACE).orEmpty(),
                     lastError = intent.getStringExtra(Automation.EXTRA_ERROR).orEmpty(),
-                    isVpnBound = false,
-                    isVpnBypassed = false,
                     clientCount = intent.getIntExtra(Automation.EXTRA_CLIENT_COUNT, 0),
                     traffic = Traffic(
                         up = intent.getLongExtra(Automation.EXTRA_BYTES_UP, 0L),
