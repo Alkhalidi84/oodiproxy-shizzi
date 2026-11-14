@@ -11,12 +11,6 @@ import org.json.JSONObject
  * block list. Experimental per-client counters account only for payload relayed through
  * the userspace datapath and rely on an IP-to-MAC match from the ARP table.
  */
-
-/**
- * Reads the tethered Soft AP client list and applies the platform SoftApConfiguration
- * block list. Per-station byte counters are deliberately reported as unavailable:
- * Android's public tethering counters are interface-wide, not MAC-address scoped.
- */
 class HotspotClientManager(private val context: Context) {
 
     private val usagePreferences by lazy {
