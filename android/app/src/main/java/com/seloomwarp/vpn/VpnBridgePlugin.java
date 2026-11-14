@@ -29,6 +29,29 @@ public class VpnBridgePlugin extends Plugin {
     private PluginCall pendingCall;
     private Intent pendingIntent;
 
+    /**
+     * Parses a V2Ray share URI into a Sing-box profile. This is deliberately
+     * separate from connect(): parsing a profile does not claim that a tunnel
+     * is running or bypass Android's VPN permission/lifecycle requirements.
+     */
+    @PluginMethod
+    public void parseProxyProfile(PluginCall call) {
+        try {
+            String link = call.getString("link", "");
+            SingBoxProfileParser.Profile profile = SingBoxProfileParser.parse(link);
+            JSObject result = new JSObject();
+            result.put("protocol", profile.protocol);
+            result.put("name", profile.name);
+            result.put("server", profile.server);
+            result.put("port", profile.port);
+            result.put("configJson", profile.configJson);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to parse proxy profile: " + error.getMessage(),
+                    error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
     @PluginMethod
     public void isVpnConnected(PluginCall call) {
         JSObject result = new JSObject();
