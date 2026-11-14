@@ -472,7 +472,7 @@ export default function App() {
 
   // Handle Power button toggle with Real Android VPN Service
   const handleToggleConnection = async () => {
-    if (connectionState === 'connected') {
+    if (connectionState === 'connected' || connectionState === 'reconnecting') {
       reconnectWantedRef.current = false;
       try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
       setConnectionState('disconnecting');
