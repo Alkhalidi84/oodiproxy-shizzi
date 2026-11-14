@@ -126,12 +126,12 @@ private fun statusFor(sessionState: String): UiStatus = when (sessionState) {
 
 class TetherClient {
 
-    private var boundService: ITetherService? = null
-    private var pendingBind: CompletableDeferred<ITetherService>? = null
+    @Volatile private var boundService: ITetherService? = null
+    @Volatile private var pendingBind: CompletableDeferred<ITetherService>? = null
 
-    var onSessionLost: (() -> Unit)? = null
+    @Volatile var onSessionLost: (() -> Unit)? = null
 
-    private var deathRecipient: IBinder.DeathRecipient? = null
+    @Volatile private var deathRecipient: IBinder.DeathRecipient? = null
     private val bindMutex = Mutex()
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
@@ -183,11 +183,6 @@ class TetherClient {
     }
 
     private suspend fun service(): ITetherService = bindMutex.withLock {
-        boundService?.let { existing ->
-            if (existing.asBinder().pingBinder()) return@withLock existing
-            boundService = null
-        }
-
         check(runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             "Shizuku is not running. Start Shizuku and retry."
         }
@@ -199,6 +194,11 @@ class TetherClient {
         val serverUid = runCatching { Shizuku.getUid() }.getOrDefault(-1)
         check(serverUid == 2000 || serverUid == 0) {
             "Unsupported Shizuku server identity: uid=$serverUid (expected shell 2000 or root 0)."
+        }
+
+        boundService?.let { existing ->
+            if (existing.asBinder().pingBinder()) return@withLock existing
+            boundService = null
         }
 
         val deferred = CompletableDeferred<ITetherService>()
