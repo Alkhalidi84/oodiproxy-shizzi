@@ -4,40 +4,51 @@ import java.math.BigInteger;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Removes private/local address ranges from default VPN routes.
- *
- * Splitting 0/0 into two /1 routes is not a LAN bypass: it still captures every
- * RFC1918/ULA destination. This class subtracts the local-use CIDRs while
- * preserving the address families explicitly present in AllowedIPs.
+ * Removes actual on-device local networks from VPN routes.
+ * Do not exclude all RFC1918 space: remote corporate/private networks may
+ * intentionally be reachable through the VPN.
  */
 final class VpnRoutePolicy {
-    private static final List<String> IPV4_LAN = Arrays.asList(
-            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16");
-    private static final List<String> IPV6_LAN = Arrays.asList(
-            "fc00::/7", "fe80::/10");
+    private static final List<String> LINK_LOCAL = Arrays.asList(
+            "169.254.0.0/16", "fe80::/10");
 
     private VpnRoutePolicy() {}
 
+    static List<String> lanExclusionCidrs(List<String> localNetworks) {
+        LinkedHashSet<String> result = new LinkedHashSet<>(LINK_LOCAL);
+        if (localNetworks != null) {
+            for (String route : localNetworks) {
+                if (route != null && !route.trim().isEmpty()) result.add(route.trim());
+            }
+        }
+        return new ArrayList<>(result);
+    }
+
     static String applyLanBypass(String allowedIps, boolean bypassLan) {
+        return applyLanBypass(allowedIps, bypassLan, null);
+    }
+
+    static String applyLanBypass(String allowedIps, boolean bypassLan, List<String> localNetworks) {
         if (allowedIps == null || allowedIps.trim().isEmpty() || !bypassLan) {
             return allowedIps == null ? "" : allowedIps.trim();
         }
+        List<String> exclusions = lanExclusionCidrs(localNetworks);
         List<String> result = new ArrayList<>();
         for (String raw : allowedIps.split(",")) {
             String route = raw.trim();
             if (route.isEmpty()) continue;
             try {
                 int bits = addressBits(route);
-                List<String> pieces = new ArrayList<>();
-                pieces.add(route);
-                List<String> exclusions = bits == 32 ? IPV4_LAN : bits == 128 ? IPV6_LAN : null;
-                if (exclusions == null) {
+                if (bits != 32 && bits != 128) {
                     result.add(route);
                     continue;
                 }
+                List<String> pieces = new ArrayList<>();
+                pieces.add(route);
                 for (String exclusion : exclusions) {
                     List<String> next = new ArrayList<>();
                     for (String piece : pieces) next.addAll(subtract(piece, exclusion));
@@ -116,8 +127,7 @@ final class VpnRoutePolicy {
             if (prefix < 0 || prefix > bits) throw new IllegalArgumentException("Invalid prefix");
             BigInteger mask = prefix == 0 ? BigInteger.ZERO
                     : BigInteger.ONE.shiftLeft(prefix).subtract(BigInteger.ONE).shiftLeft(bits - prefix);
-            BigInteger network = new BigInteger(1, address).and(mask);
-            return new Cidr(network, prefix, bits);
+            return new Cidr(new BigInteger(1, address).and(mask), prefix, bits);
         }
     }
 }
