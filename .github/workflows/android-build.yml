@@ -66,6 +66,10 @@ jobs:
       - name: Build web assets and sync Capacitor
         run: npm run android:sync
 
+      - name: Run Android unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
       - name: Assemble Android debug APK
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug
