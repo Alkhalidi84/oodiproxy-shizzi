@@ -249,6 +249,10 @@ export default function App() {
 
   // Restore only a tunnel the user previously asked to keep active.
   useEffect(() => {
+    if (!settings.autoReconnect) {
+      if (connectionStateRef.current === 'reconnecting') setConnectionState('disconnected');
+      return;
+    }
     let disposed = false;
     const monitor = async () => {
       if (disposed || !settings.autoReconnect || !reconnectWantedRef.current || reconnectInFlightRef.current) return;
