@@ -91,6 +91,10 @@ internal class SingBoxEngine(
             if (failure == null) failure = it else failure?.addSuppressed(it)
         }
         commandServer = null
+        interfaceMonitors.values.toList().forEach { callback ->
+            runCatching { connectivity.unregisterNetworkCallback(callback) }
+        }
+        interfaceMonitors.clear()
         runCatching { tunDescriptor?.close() }.onFailure {
             if (failure == null) failure = it else failure?.addSuppressed(it)
         }
@@ -154,7 +158,16 @@ internal class SingBoxEngine(
     }
 
     // CommandServerHandler
-    override fun serviceStop() { running = false; vpn.onSingBoxEngineStopped() }
+    override fun serviceStop() {
+        running = false
+        vpn.onSingBoxEngineStopped()
+        val descriptor = tunDescriptor
+        tunDescriptor = null
+        if (descriptor != null) {
+            runCatching { descriptor.close() }
+            vpn.onSingBoxTunClosed(descriptor)
+        }
+    }
     override fun serviceReload() { }
     override fun getSystemProxyStatus(): SystemProxyStatus = SystemProxyStatus().apply {
         available = false
