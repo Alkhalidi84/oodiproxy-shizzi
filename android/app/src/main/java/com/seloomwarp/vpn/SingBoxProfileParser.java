@@ -64,6 +64,7 @@ public final class SingBoxProfileParser {
         String tag = uri.getFragment() == null ? scheme + "-" + host : decode(uri.getFragment());
         String user = uri.getRawUserInfo() == null ? "" : decode(uri.getRawUserInfo());
         if (user.isEmpty()) throw new IllegalArgumentException("Proxy credentials are missing");
+        validateOptions(scheme, query);
         JSONObject outbound = new JSONObject();
         outbound.put("type", scheme);
         outbound.put("tag", "proxy");
@@ -122,6 +123,31 @@ public final class SingBoxProfileParser {
         applyTransportAndTls(outbound, query);
         String name = source.optString("ps", "VMess-" + host);
         return buildProfile("vmess", name, host, port, outbound);
+    }
+
+    /**
+     * Validate user-controlled link options before touching android.jar's JSONObject.
+     * This keeps malformed-link tests runnable on the plain JVM and fails fast in-app.
+     */
+    private static void validateOptions(String scheme, Map<String, String> q) {
+        if ("vless".equals(scheme)
+                && !"none".equalsIgnoreCase(value(q, "encryption", "none"))) {
+            throw new IllegalArgumentException("VLESS encryption must be none");
+        }
+        String security = value(q, "security", "none").toLowerCase(Locale.ROOT);
+        if ("reality".equals(security)
+                && value(q, "pbk", value(q, "publicKey", "")).isEmpty()) {
+            throw new IllegalArgumentException("REALITY public key (pbk) is missing");
+        }
+        if (!security.isEmpty() && !"none".equals(security)
+                && !"tls".equals(security) && !"reality".equals(security)) {
+            throw new IllegalArgumentException("Unsupported TLS security mode: " + security);
+        }
+        String network = value(q, "type", "tcp").toLowerCase(Locale.ROOT);
+        if (!"tcp".equals(network) && !"ws".equals(network) && !"grpc".equals(network)
+                && !"http".equals(network) && !"h2".equals(network)) {
+            throw new IllegalArgumentException("Unsupported transport: " + network);
+        }
     }
 
     private static void applyTransportAndTls(JSONObject outbound, Map<String, String> q) throws JSONException {
