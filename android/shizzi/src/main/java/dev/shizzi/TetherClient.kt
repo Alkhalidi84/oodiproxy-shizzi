@@ -182,7 +182,14 @@ class TetherClient {
         }
     }
 
-    private suspend fun service(): ITetherService = bindMutex.withLock {
+    private suspend fun service(allowExistingWithoutShizuku: Boolean = false): ITetherService = bindMutex.withLock {
+        boundService?.let { existing ->
+            if (existing.asBinder().pingBinder() && allowExistingWithoutShizuku) {
+                return@withLock existing
+            }
+            if (!existing.asBinder().pingBinder()) boundService = null
+        }
+
         check(runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             "Shizuku is not running. Start Shizuku and retry."
         }
@@ -322,7 +329,7 @@ class TetherClient {
 
     suspend fun releaseOrphanedDownstream(): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val bound = service()
+            val bound = service(allowExistingWithoutShizuku = true)
             verifyContract(bound)
             bound.stop()
         }.fold(
