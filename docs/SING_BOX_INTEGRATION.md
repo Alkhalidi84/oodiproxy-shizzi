@@ -1,53 +1,65 @@
-# Sing-box integration plan
+# Sing-box integration
 
-## Current status
+## Current implementation status
 
-NexaLink currently has a working WireGuard engine and an exclusive VPN-engine lifecycle manager. Sing-box is **not yet integrated into the Android runtime**. The VLESS, VMess, and Trojan options must remain unavailable or clearly marked as not implemented until the native engine, configuration validation, and connection lifecycle tests pass.
+NexaLink contains an Android Sing-box adapter in `android/app/src/main/java/com/seloomwarp/vpn/SingBoxEngine.kt`. It uses the pinned libbox Android binding and runs inside the same `AlkhalidiVpnService` used by WireGuard. It does not start a second Android `VpnService`.
 
-This repository deliberately does not copy or rebrand the separate sing-box-for-android application. It integrates the upstream Sing-box core through its libbox AAR and NexaLink-owned Android platform adapter.
+The Capacitor bridge exposes proxy-link parsing and `connectProxy`. The current share-link parser supports VLESS, VMess and Trojan URI forms and builds a Sing-box configuration. Parser support is not a promise that every server-side transport or option is supported: the generated configuration must still be accepted by the pinned native core and verified against a real endpoint.
 
-## Pinned native build
+The current CI success proves compilation, unit tests and APK packaging only. It does not prove that a real proxy handshake, traffic routing, tethered-client traffic, or device-specific Shizuku operations work.
 
-The manual GitHub Actions workflow `.github/workflows/build-singbox-libbox.yml` builds the upstream `SagerNet/sing-box` tag `v1.14.4` for `arm64-v8a`. It follows the upstream build process and pins the toolchain:
+## Engine and TUN ownership
 
-- Go 1.26.10
-- OpenJDK 17
-- Android NDK r28
-- Upstream libbox build command: `go run ./cmd/internal/build_libbox -target android -platform android/arm64`
+- `AlkhalidiVpnService` is the only Android `VpnService` declared by the app.
+- `VpnEngineManager` serializes start, stop and engine switching.
+- `WireGuardEngine` uses the existing WireGuard GoBackend.
+- `SingBoxEngine` uses libbox `CommandServer`, `PlatformInterface` and `CommandServerHandler`.
+- Only one engine may own the app VPN interface at a time.
+- A failed stop prevents a second engine from starting. A failed start attempts cleanup; if cleanup fails, ownership remains marked uncertain so a competing engine is not started.
+- Sing-box obtains its TUN through `VpnService.Builder.establish()` in `openTun`. The returned descriptor is retained by the adapter until native service shutdown and cleanup.
+- The service's traffic snapshot reads WireGuard backend statistics or Sing-box native status counters, according to the active engine.
 
-The workflow publishes both `libbox.aar` and `libbox-legacy.aar` as a CI artifact with SHA-256 checksums. This is a reproducible native-library build step, not a runtime integration or an APK containing Sing-box. The artifact must be inspected and explicitly imported into the Android build only after API and ABI checks.
+## Pinned native dependency
 
-## Verified native artifact (2026-11-14)
+The repository pins upstream Sing-box v1.14.4 and builds the Android libbox binding for `arm64-v8a`. The workflow and artifact verification are documented in `.github/workflows/build-singbox-libbox.yml` and the corresponding CI gate. The app's current native ABI filter is ARM64 only; devices without ARM64 support are not covered by this build.
 
-The pinned upstream build completed successfully for commit `387e742113f1f265058136b144ad8458845108d8`.
+## Share-link support boundary
 
-- `libbox.aar`: 28,678,035 bytes.
-- Native library: `jni/arm64-v8a/libbox.so` (80,947,216 bytes inside the AAR).
-- The generated Java API includes `PlatformInterface`, `TunOptions`, `CommandServer`, and `CommandServerHandler`.
-- SHA-256: `9b6d9a862907e77683ba1f00dbcb28c5d76f3e431c039f50f22a38f7b8471ede`.
+The parser currently handles:
+- VLESS UUID credentials, TLS and REALITY parameters, and TCP/WS/gRPC/HTTP(H2) transport forms supported by its mapping.
+- VMess Base64 JSON share links and the mapped TLS/transport fields.
+- Trojan password links with TLS and supported transport mappings.
 
-A follow-up CI gate now checks those required API classes, confirms that the AAR contains exactly one native ABI (arm64-v8a), and verifies the published checksums before the artifact is uploaded. This is a build-integrity check only: it does not imply that the AAR is packaged in NexaLink or that a Sing-box VPN session has been tested.
+The parser is intentionally not a full general-purpose Sing-box JSON editor. It does not promise support for every V2Ray URI extension, Xray-specific feature, XHTTP, arbitrary plugins, chained proxies, subscription formats, or every flow/security combination. Unsupported options should fail clearly rather than be silently advertised as working.
 
-## Runtime integration design
+## Platform adapter behavior
 
-1. **One VPN owner.** Keep `AlkhalidiVpnService` as the sole Android `VpnService`. WireGuard and Sing-box must implement the same internal engine contract and be mutually exclusive through `VpnEngineManager`. Never let both engines establish or own a TUN concurrently.
-2. **Platform adapter.** Implement the complete libbox `PlatformInterface` required by the pinned upstream version. Treat unsupported platform capabilities explicitly; do not return fake success values.
-3. **TUN descriptor ownership.** Sing-box's `OpenTun(TunOptions)` must create the Android TUN through the service's `VpnService.Builder`, configure addresses, routes, DNS, MTU and allowed/disallowed applications, and transfer a valid descriptor to libbox. Define exactly one owner and close path for every descriptor to prevent leaks and double-close races.
-4. **Command server lifecycle.** Create, start, monitor, and close `libbox.CommandServer` with the VPN service lifecycle. Surface native startup errors and service state to the UI; do not report connected until the engine reports a running service and the TUN is established.
-5. **Network changes.** Implement default-network/interface monitoring and bind outbound sockets to the selected Android `Network` where appropriate. Handle network loss, handover, DNS updates, and service stop without leaving stale callbacks.
-6. **Config boundary.** Parse and validate user-provided Sing-box JSON before starting the native service. Reject malformed or unsupported configuration with actionable errors. Never place private keys, passwords, UUIDs, or full config content in logs or diagnostics exports.
-7. **Protocol support.** Enable VLESS, VMess, and Trojan only after protocol-specific sample configurations and integration smoke tests succeed. A URI parser or UI selector alone is not protocol support.
-8. **No-root constraint.** Use Android's public `VpnService` APIs for tunnel ownership. Use Shizuku only for supported hotspot operations; do not depend on root shell, iptables, or hidden privileged APIs for the VPN engine.
+The adapter implements the libbox callbacks needed by the current integration, including:
+- Android TUN establishment and route/address/DNS configuration.
+- VPN socket protection via `VpnService.protect`.
+- Default-network monitoring and interface enumeration.
+- Connection-owner lookup on Android 10+.
+- Native traffic-status subscription.
 
-## Required verification before enabling protocols
+Optional platform features not implemented by NexaLink (for example system proxy control, local DNS transport hooks, notification delivery, shell/SSH integration, bridge support and neighbor monitoring) are reported as unavailable or left unsupported; they must not be represented as successful features.
 
-- Build the pinned AAR and verify it contains the expected Android ABI and libbox classes.
-- Add Android adapter tests for TUN setup failure, descriptor cleanup, command-server startup/stop, and network callbacks.
-- Add engine-manager tests for WireGuard-to-Sing-box and Sing-box-to-WireGuard switching, including stop failure and rollback failure.
-- Validate a minimal local test configuration for each supported protocol and confirm traffic traverses the Android TUN.
-- Test VPN permission denial, process recreation, service destruction, airplane mode, Wi-Fi/cellular handover, DNS failure, and repeated connect/disconnect.
-- Confirm the app still builds and runs without Shizuku permission; Shizuku is optional for VPN use.
+## Required release validation
 
-## Licensing and notices
+Before calling Sing-box production-ready, complete all of the following on physical devices:
+1. Import and connect sanitized VLESS TCP/TLS, VLESS WS/TLS, VLESS REALITY, VMess WS/TLS, and Trojan TLS test profiles against controlled endpoints.
+2. Verify IPv4, IPv6, DNS, LAN bypass, excluded applications and MTU behavior.
+3. Verify WireGuard -> Sing-box -> WireGuard switching, repeated connect/disconnect, invalid configuration, permission denial, service destruction and process recreation.
+4. Verify Wi-Fi/cellular handover, airplane mode, network loss and recovery.
+5. Verify hotspot clients can pass TCP, UDP and DNS through each selected VPN engine with Shizuku granted and revoked.
+6. Compare phone and tethered-client traffic counters against independent measurements.
+7. Verify no UUID, password, private key, full share link or raw config appears in logs, notifications or exported diagnostics.
+8. Test every advertised ABI and Android API/OEM family. Current CI packaging is ARM64 only.
+9. Complete license and source-notice review for libbox and all transitive native dependencies before distribution.
 
-Review the exact upstream tag's license and the licenses of the modules included in the generated AAR before distributing builds. Preserve upstream copyright and license notices, provide corresponding source and modification notices where required, and keep the app's own attribution distinct from upstream project branding. Do not copy the separate Android client application's source or assets as a shortcut.
+## Security and diagnostics
+
+Never log complete share links, raw Sing-box configuration, UUIDs, passwords, private keys, REALITY public keys or tokens. Diagnostics should report profile type, engine state, error category and redacted native causes only. Treat profile data as untrusted input and validate it before requesting VPN permission or creating a TUN.
+
+## Licensing
+
+Pin the exact upstream source revision used for each release. Preserve required copyright and license notices and provide corresponding source/modification notices where required. Keep NexaLink branding distinct from upstream projects and do not imply endorsement.
