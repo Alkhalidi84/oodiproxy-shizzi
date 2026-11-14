@@ -213,7 +213,11 @@ class TetherClient {
             )
         }
 
-        val bound = awaitBind(deferred)
+        val bound = try {
+            awaitBind(deferred)
+        } finally {
+            if (pendingBind === deferred) pendingBind = null
+        }
         observeDeath(bound)
         bound
     }
@@ -299,7 +303,9 @@ class TetherClient {
     }
 
     suspend fun stop(): String = withContext(Dispatchers.IO) {
-        service().stop()
+        val bound = service()
+        verifyContract(bound)
+        bound.stop()
     }
 
     suspend fun clearLog(): String? = withContext(Dispatchers.IO) {
@@ -315,8 +321,11 @@ class TetherClient {
     }
 
     suspend fun releaseOrphanedDownstream(): String? = withContext(Dispatchers.IO) {
-        runCatching { service().stop() }
-            .fold(
+        runCatching {
+            val bound = service()
+            verifyContract(bound)
+            bound.stop()
+        }.fold(
                 onSuccess = { null },
                 onFailure = { failure ->
                     "could not reach Shizuku to drop the hotspot: ${failure.message}"
@@ -325,7 +334,9 @@ class TetherClient {
     }
 
     suspend fun status(): String = withContext(Dispatchers.IO) {
-        service().status
+        val bound = service()
+        verifyContract(bound)
+        bound.status
     }
 
     suspend fun setClientBlocked(macAddress: String, blocked: Boolean): String =
