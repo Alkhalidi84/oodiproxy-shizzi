@@ -86,6 +86,52 @@ function normalizeStoredServers(value: unknown): WireguardServer[] | null {
   });
 }
 
+
+function isStringArray(value: unknown, maxItems: number, maxLength = 256): value is string[] {
+  return Array.isArray(value)
+    && value.length <= maxItems
+    && value.every((item) => typeof item === 'string' && item.length > 0 && item.length <= maxLength);
+}
+
+function isValidBackupServer(value: unknown): value is WireguardServer {
+  if (!value || typeof value !== 'object') return false;
+  const server = value as Partial<WireguardServer>;
+  return server.protocol === 'WireGuard'
+    && typeof server.id === 'string' && server.id.length > 0 && server.id.length <= 128
+    && typeof server.name === 'string' && server.name.length > 0 && server.name.length <= 128
+    && typeof server.rawUri === 'string' && server.rawUri.length <= 4096
+    && typeof server.endpoint === 'string' && server.endpoint.length <= 300
+    && typeof server.host === 'string' && server.host.length <= 253
+    && Number.isInteger(server.port) && Number(server.port) >= 1 && Number(server.port) <= 65535
+    && typeof server.privateKey === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(server.privateKey)
+    && typeof server.publicKey === 'string' && /^[A-Za-z0-9+/]{43}=$/.test(server.publicKey)
+    && isStringArray(server.addresses, 8, 64)
+    && isStringArray(server.dns, 8, 64)
+    && isStringArray(server.allowedIPs, 32, 128)
+    && Number.isInteger(server.mtu) && Number(server.mtu) >= 576 && Number(server.mtu) <= 9000
+    && Number.isInteger(server.persistentKeepalive) && Number(server.persistentKeepalive) >= 0 && Number(server.persistentKeepalive) <= 65535
+    && Number.isFinite(server.createdAt);
+}
+
+function sanitizeBackupSettings(value: unknown, current: AppSettings): AppSettings {
+  if (!value || typeof value !== 'object') return current;
+  const raw = value as Partial<AppSettings>;
+  const next: AppSettings = { ...current };
+  if (typeof raw.dpiBypass === 'boolean') next.dpiBypass = raw.dpiBypass;
+  if (typeof raw.autoReconnect === 'boolean') next.autoReconnect = raw.autoReconnect;
+  if (typeof raw.bypassLanRoute === 'boolean') next.bypassLanRoute = raw.bypassLanRoute;
+  if (typeof raw.externalIp === 'string' && raw.externalIp.length <= 128) next.externalIp = raw.externalIp;
+  if (typeof raw.location === 'string' && raw.location.length <= 128) next.location = raw.location;
+  if (typeof raw.country === 'string' && raw.country.length <= 80) next.country = raw.country;
+  if (typeof raw.countryFlag === 'string' && raw.countryFlag.length <= 16) next.countryFlag = raw.countryFlag;
+  if (typeof raw.defaultDns === 'string' && raw.defaultDns.length <= 64) next.defaultDns = raw.defaultDns;
+  if (Number.isInteger(raw.mtu) && Number(raw.mtu) >= 576 && Number(raw.mtu) <= 9000) next.mtu = Number(raw.mtu);
+  if (Number.isInteger(raw.keepalive) && Number(raw.keepalive) >= 0 && Number(raw.keepalive) <= 65535) next.keepalive = Number(raw.keepalive);
+  if (isStringArray(raw.excludedApplications, 200, 256)) next.excludedApplications = raw.excludedApplications;
+  if (raw.language === 'en' || raw.language === 'ar') next.language = raw.language;
+  return next;
+}
+
 export default function App() {
   // 1. Servers state
   const [servers, setServers] = useState<WireguardServer[]>(() => {
@@ -619,30 +665,19 @@ export default function App() {
     if (payload.formatVersion !== 1 || !Array.isArray(payload.servers)) {
       throw new Error('The backup payload is incomplete or unsupported.');
     }
-    const importedServers = payload.servers.filter((item): item is WireguardServer => {
-      if (!item || typeof item !== 'object') return false;
-      const server = item as Partial<WireguardServer>;
-      return server.protocol === 'WireGuard'
-        && typeof server.name === 'string'
-        && typeof server.endpoint === 'string'
-        && typeof server.privateKey === 'string'
-        && typeof server.publicKey === 'string'
-        && Array.isArray(server.addresses)
-        && Array.isArray(server.dns)
-        && Array.isArray(server.allowedIPs);
-    });
+    const importedServers = payload.servers.filter(isValidBackupServer);
     if (importedServers.length === 0) {
       throw new Error('The backup does not contain a valid WireGuard server.');
     }
-    const importedSettings = payload.settings && typeof payload.settings === 'object'
-      ? payload.settings as Partial<AppSettings>
-      : {};
+    const importedSettings = sanitizeBackupSettings(payload.settings, settings);
     const nextActiveId = typeof payload.activeServerId === 'string'
       && importedServers.some((server) => server.id === payload.activeServerId)
       ? payload.activeServerId
       : importedServers[0].id;
     setServers(importedServers);
-    setSettings((current) => ({ ...current, ...importedSettings }));
+    setSettings(importedSettings);
+    reconnectWantedRef.current = false;
+    try { localStorage.setItem(STORAGE_RECONNECT_INTENT_KEY, 'false'); } catch { /* storage may be unavailable */ }
     setActiveServerId(nextActiveId);
     setTelemetry({
       durationSeconds: 0,
