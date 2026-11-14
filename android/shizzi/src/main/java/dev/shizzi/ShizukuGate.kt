@@ -9,6 +9,7 @@ sealed interface ShizukuState {
     data object NotInstalled : ShizukuState
     data object NotRunning : ShizukuState
     data object PermissionRequired : ShizukuState
+    data class UnsupportedIdentity(val uid: Int) : ShizukuState
     data class Ready(val uid: Int, val isRoot: Boolean) : ShizukuState
 }
 
@@ -25,7 +26,10 @@ object ShizukuGate {
         if (!hasPermission()) return ShizukuState.PermissionRequired
 
         val uid = runCatching { Shizuku.getUid() }.getOrDefault(-1)
-        return ShizukuState.Ready(uid = uid, isRoot = uid == ROOT_UID)
+        return when (uid) {
+            SHELL_UID, ROOT_UID -> ShizukuState.Ready(uid = uid, isRoot = uid == ROOT_UID)
+            else -> ShizukuState.UnsupportedIdentity(uid)
+        }
     }
 
     private fun isBinderLive(): Boolean {
@@ -59,7 +63,7 @@ object ShizukuGate {
             ShizukuState.NotInstalled -> openReleasesPage()
             ShizukuState.NotRunning -> launchShizuku()
             ShizukuState.PermissionRequired -> requestPermission()
-            is ShizukuState.Ready -> Unit
+            is ShizukuState.UnsupportedIdentity, is ShizukuState.Ready -> Unit
         }
     }
 
