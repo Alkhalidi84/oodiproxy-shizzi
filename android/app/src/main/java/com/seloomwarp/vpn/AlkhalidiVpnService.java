@@ -272,7 +272,7 @@ public class AlkhalidiVpnService extends VpnService {
             stopVpnAfterEngineStopped();
         } catch (Exception error) {
             synchronized (tunnelLock) {
-                isRunning = isWireGuardTunnelRunningLocked();
+                isRunning = engineManager.activeEngineId() != null || isWireGuardTunnelRunningLocked();
             }
         }
     }
