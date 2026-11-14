@@ -223,7 +223,13 @@ export default function App() {
           await delay(wait);
           if (disposed || !reconnectWantedRef.current) return;
           try {
-            if (await connectWireGuard(activeServer, settings)) {
+            const recovered = await connectWireGuard(activeServer, settings);
+            if (recovered) {
+              if (!reconnectWantedRef.current) {
+                await VpnBridge.disconnect().catch(() => undefined);
+                setConnectionState('disconnected');
+                return;
+              }
               setConnectionState('connected');
               return;
             }
