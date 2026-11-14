@@ -110,6 +110,50 @@ public class VpnBridgePlugin extends Plugin {
         }
     }
 
+    /** Stores WireGuard peers, including private keys, in the same Keystore-protected vault. */
+    @PluginMethod
+    public void saveSecureWireGuardServers(PluginCall call) {
+        try {
+            String json = call.getString("serversJson", "[]");
+            if (json == null || json.length() > 2_000_000) throw new IllegalArgumentException("WireGuard server data is too large");
+            new org.json.JSONArray(json);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateProfileKey());
+            byte[] encrypted = cipher.doFinal(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            byte[] payload = new byte[iv.length + encrypted.length];
+            System.arraycopy(iv, 0, payload, 0, iv.length);
+            System.arraycopy(encrypted, 0, payload, iv.length, encrypted.length);
+            boolean saved = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE)
+                    .edit().putString("encrypted_wireguard_servers", Base64.encodeToString(payload, Base64.NO_WRAP)).commit();
+            if (!saved) throw new IllegalStateException("Unable to persist encrypted WireGuard servers");
+            call.resolve();
+        } catch (Throwable error) {
+            call.reject("Unable to securely save WireGuard servers: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
+
+    @PluginMethod
+    public void loadSecureWireGuardServers(PluginCall call) {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences(SECURE_PROFILE_PREFS, android.content.Context.MODE_PRIVATE);
+            String encoded = prefs.getString("encrypted_wireguard_servers", null);
+            JSObject result = new JSObject();
+            if (encoded == null || encoded.isEmpty()) { result.put("serversJson", ""); call.resolve(result); return; }
+            byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
+            if (payload.length <= 28) throw new IllegalStateException("Encrypted WireGuard data is truncated");
+            byte[] iv = java.util.Arrays.copyOfRange(payload, 0, 12);
+            byte[] encrypted = java.util.Arrays.copyOfRange(payload, 12, payload.length);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateProfileKey(), new GCMParameterSpec(128, iv));
+            String json = new String(cipher.doFinal(encrypted), java.nio.charset.StandardCharsets.UTF_8);
+            new org.json.JSONArray(json);
+            result.put("serversJson", json);
+            call.resolve(result);
+        } catch (Throwable error) {
+            call.reject("Unable to decrypt saved WireGuard servers: " + error.getMessage(), error instanceof Exception ? (Exception) error : new Exception(error));
+        }
+    }
     private SecretKey getOrCreateProfileKey() throws Exception {
         KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
         keyStore.load(null);
