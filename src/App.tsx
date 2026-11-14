@@ -167,6 +167,7 @@ function sanitizeBackupSettings(value: unknown, current: AppSettings): AppSettin
 
 export default function App() {
   // 1. Servers state
+  const [serversStorageReady, setServersStorageReady] = useState(false);
   const [servers, setServers] = useState<WireguardServer[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_SERVERS_KEY);
@@ -393,14 +394,41 @@ export default function App() {
     return () => { cancelled = true; window.clearTimeout(initialTimer); window.clearInterval(timer); };
   }, []);
 
-  // Save servers to localStorage
+  // WireGuard private keys are encrypted with the Android Keystore. Migrate
+  // existing plaintext localStorage data once and remove it only after success.
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_SERVERS_KEY, JSON.stringify(servers));
-    } catch (e) {
-      console.warn('Storage save failed:', e);
-    }
-  }, [servers]);
+    let cancelled = false;
+    const restore = async () => {
+      try {
+        const secure = await VpnBridge.loadSecureWireGuardServers();
+        let rawServers: unknown;
+        if (secure.serversJson) {
+          rawServers = JSON.parse(secure.serversJson);
+        } else {
+          const legacy = localStorage.getItem(STORAGE_SERVERS_KEY);
+          rawServers = legacy ? JSON.parse(legacy) : getInitialServers();
+          const normalized = normalizeStoredServers(rawServers) || getInitialServers();
+          await VpnBridge.saveSecureWireGuardServers({ serversJson: JSON.stringify(normalized) });
+        }
+        const restored = normalizeStoredServers(rawServers) || getInitialServers();
+        if (!cancelled) {
+          setServers(restored);
+          setServersStorageReady(true);
+          try { localStorage.removeItem(STORAGE_SERVERS_KEY); } catch { /* legacy key may be unavailable */ }
+        }
+      } catch (error) {
+        console.error('Secure WireGuard storage could not be opened; existing data was not overwritten.', error);
+      }
+    };
+    void restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!serversStorageReady) return;
+    void VpnBridge.saveSecureWireGuardServers({ serversJson: JSON.stringify(servers) })
+      .catch((error) => console.error('Secure WireGuard server save failed:', error));
+  }, [servers, serversStorageReady]);
 
   // Load credentials from Android Keystore-backed storage. Migrate legacy
   // WebView localStorage once, then remove the plaintext copy only after save succeeds.
